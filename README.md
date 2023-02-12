@@ -16,3 +16,8 @@ latent space variational inversion for 2D geomodels from dynamic data with coupl
 <p align="center">
   <img src="https://github.com/misaelmmorales/Latent-Geo-Inversion/blob/main/figures/inversion_pred_backtransform.png" />
 </p>
+
+<p align="center">
+  <img src="https://github.com/misaelmmorales/Latent-Geo-Inversion/blob/main/figures/geo-inv-figs.jpg" width="500" />
+</p>
+
