@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 ### Loss functions
 def plot_loss(fit, title='', figsize=None):
@@ -65,7 +66,34 @@ def plot_data(timestamps, opr, wpr, wcut, multiplier=1, ncols=10, figsize=(20,6)
         for j in range(3):
             axs[j,0].set(ylabel=labels[j])
             axs[j,i].grid('on')
-    fig.legend(labels=well_names, loc='right', bbox_to_anchor=(0.95, 0.5))    
+    fig.legend(labels=well_names, loc='right', bbox_to_anchor=(0.95, 0.5))   
+
+
+def make_dynamic_animation(static, dynamic, ncols=11, multiplier=10, figsize=(20,6), static_label='poro', static_cmap='viridis', interval=100, blit=False):
+    labels = [static_label, 'pressure', 'saturation']
+    pressure, saturation = dynamic
+    tot_frames = pressure.shape[1]
+    xlocs, ylocs = [0,0,0,127,127,127], [0,63,127,0,63,127]
+    fig, axs = plt.subplots(3, ncols, figsize=figsize, facecolor='white')
+    for k in range(ncols):
+        r = k*multiplier
+        axs[0,k].set(title='#{}'.format(r))
+        axs[0,k].imshow(static[r], static_cmap)
+        axs[1,k].imshow(pressure[r,0], 'gnuplot2')
+        axs[2,k].imshow(saturation[r,0], 'jet')
+        for p in range(3):
+            axs[p,k].set(xticks=[], yticks=[])
+            axs[p,k].scatter(xlocs, ylocs, c='k')
+            axs[p,0].set(ylabel=labels[p])
+    def animate(i):
+        for k in range(ncols):
+            r = k*multiplier
+            axs[1,k].imshow(pressure[r,i], 'gnuplot2')
+            axs[2,k].imshow(saturation[r,i], 'jet')
+        return axs[1,k], axs[2,k]
+    ani = animation.FuncAnimation(fig, animate, frames=tot_frames, blit=blit, interval=interval)
+    ani.save('figures/dynamic_animation.gif')
+    plt.show()
 
 ### Engineering dynamic observations (observation wells)
 def plot_X_observation(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
