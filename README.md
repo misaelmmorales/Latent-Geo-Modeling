@@ -2,7 +2,7 @@
 latent space variational inversion for 2D geomodels from dynamic data with coupled autoencoders
 
 <p align="center">
-  <img src="https://github.com/misaelmmorales/Latent-Geo-Inversion/blob/main/figures/sat_video.gif" width="300"/>
+  <img src="https://github.com/misaelmmorales/Latent-Geo-Inversion/blob/main/figures/dynamic_animation.gif" width="1000"/>
 </p>
 
 <p align="center">
