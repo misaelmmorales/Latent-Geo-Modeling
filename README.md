@@ -1,5 +1,5 @@
 # Latent-Geo-Inversion
-latent space variational inversion for 2D geomodels from dynamic data with decoupled autoencoders
+latent space variational inversion for geomodels from dynamic data with decoupled autoencoders
 
 <p align="center">
   <img src="https://github.com/misaelmmorales/Latent-Geo-Inversion/blob/main/figures/dynamic_animation.gif" width="1000"/>
