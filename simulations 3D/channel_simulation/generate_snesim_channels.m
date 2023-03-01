@@ -5,7 +5,7 @@
 % nsim = number of realizations to simulate
 
 [nx, ny, nz] = deal(128, 128, 16);
-numsim = 4;
+numsim = 6;
 
 S = sgems_get_par('filtersim_cont');
 %S = sgems_get_par('snesim_std');
@@ -14,7 +14,15 @@ S.dim.nx = nx;
 S.dim.ny = ny;
 S.dim.nz = nz;
 S.XML.parameters.Nb_Realizations.value = numsim;
+S.XML.parameters.Scan_Template = [11,11,11];
+S.XML.parameters.Nb_Multigrids_ADVANCED = 5;
+S.XML.parameters.Data_Weights = [0.4, 0.4, 0.2];
 S = sgems_grid(S);
 
-channels_3d = reshape(S.D, [], numsim);
-csvwrite('channels_3d.csv', channels_3d);
+csvwrite('channels_3d.csv', S.data);
+
+G=cartGrid([nx,ny,nz],[1000,1000,100]); G=computeGeometry(G);
+for i=1:6
+    subplot(2,3,i)
+    plotCellData(G, S.data(:,i)); view(-10,85);
+end

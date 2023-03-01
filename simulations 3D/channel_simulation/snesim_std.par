@@ -1,8 +1,8 @@
-<parameters>
+<parameters ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" ="" Nb_Multigrids_ADVANCED="5" ="" ="" ="" ="" ="" ="" ="" ="" ="" Scan_Template="11 11 11" Data_Weights="0.4 0.4 0.2">
     <algorithm name="snesim_std" />
     <GridSelector_Sim value="SIM" />
     <Property_Name_Sim value="snesim_std" />
-    <Nb_Realizations value="4" />
+    <Nb_Realizations value="6" />
     <Seed value="211175" />
     <PropertySelector_Training grid="TI" property="facies" />
     <Nb_Facies value="2" />
@@ -21,7 +21,6 @@
     <Constraint_Marginal_ADVANCED value="0.5" />
     <resimulation_criterion value="-1" />
     <resimulation_iteration_nb value="1" />
-    <Nb_Multigrids_ADVANCED value="3" />
     <Debug_Level value="0" />
     <Subgrid_choice value="0" />
     <expand_isotropic value="1" />
