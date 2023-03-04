@@ -3,7 +3,7 @@ clear; close all; clc
 mrstModule add incomp spe10 
 linsolve = @mldivide;
 gravity on
-set(0,'DefaultFigureWindowStyle','docked')
+%set(0,'DefaultFigureWindowStyle','docked')
 
 realization = 19;
 

@@ -3,7 +3,7 @@ clear; close all; clc
 mrstModule add incomp spe10 
 linsolve = @mldivide;
 gravity on
-set(0,'DefaultFigureWindowStyle','docked')
+%set(0,'DefaultFigureWindowStyle','docked')
 
 realization = 19;
 
@@ -12,17 +12,29 @@ G  = cartGrid([128 128 16], [1000 1000 100]*meter);
 G  = computeGeometry(G);
 
 %% Rock and Fluid properties
-perm_all = csvread('perm_all.csv', 1);
-channel_all = csvread('channel_all.csv');
+%perm_all = csvread('perm_all.csv', 1);
+%channel_all = csvread('channel_all.csv');
+%channel = reshape(reshape(channel_all(:,realization), [128,128])', [], 1);
+%channel(channel==0) = 0.8;
 
-channel = reshape(reshape(channel_all(:,realization), [128,128])', [], 1);
-channel(channel==0) = 0.8;
+%poro = channel.*10.^((perm_all(:,realization)-7)/10);
+%perm = channel.*(10.^perm_all(:,realization))*milli*darcy;
+%permeability = convertTo(perm, milli*darcy); %for export
 
-poro = channel.*10.^((perm_all(:,realization)-7)/10);
-perm = channel.*(10.^perm_all(:,realization))*milli*darcy;
-permeability = convertTo(perm, milli*darcy); %for export
+TI = load('largeLeveeWT_100Med_Sinuosity.mat');
+facies = flip(reshape(TI.TI,[],1));
+channels = reshape(TI.TI(129:256, 129:256, 113:128),[],1);
+channels_norm = double((channels-min(channels))/(max(channels)-min(channels)))+0.3;
+
+poro = channels_norm.*reshape(gaussianField(G.cartDims, [0.08, 0.35]),[],1);
+perm = convertFrom(10.^(10*log10(poro)+7), milli*darcy);
 
 rock = makeRock(G, perm, poro);
+%{
+close all; figure
+subplot(121); plotCellData(G, rock.poro); colorbar; view(-10,85)
+subplot(122); plotCellData(G, log10(convertTo(rock.perm, milli*darcy))); colorbar; view(-10,85)
+%}
 
 fluid = initSimpleFluid('mu',  [1, 5]*centi*poise, ...
                         'rho', [1000, 850]*kilogram/meter^3, ...
@@ -38,7 +50,7 @@ plotCellData(G, log10(convertTo(rock.perm,milli*darcy)), 'EdgeAlpha', 0.2);
 title('log_{10} Permeability [mD]'); colorbar; colormap('jet'); view(-10,85)
 
 figure(3)
-plotCellData(G, channel); colormap('gray')
+plotCellData(G, channels_norm); colormap('gray')
 title('Fluvial Channels'); colorbar; view(-10,85)
 
 %% Wells
