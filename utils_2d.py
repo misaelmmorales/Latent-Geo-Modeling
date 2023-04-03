@@ -52,28 +52,39 @@ def make_arrays():
     pressure   = np.zeros(shape=(n_realizations, n_timesteps, xy_dim, xy_dim))
     saturation = np.zeros(shape=(n_realizations, n_timesteps, xy_dim, xy_dim))
     
-    timestamps = loadmat('simulations/response_production/production_1.mat')['Prod']['t'][0][0].flatten()[1:]*3.1689E-8
-    channels = np.transpose(np.array(pd.read_csv('simulations/channel_all.csv', header=None)).T.reshape(n_realizations, xy_dim,xy_dim), axes=(0,2,1))
+    timestamps = loadmat('simulations 2D/response_production/production_1.mat')['Prod']['t'][0][0].flatten()[1:]*3.1689E-8
+    channels = np.transpose(np.array(pd.read_csv('simulations 2D/channel_all.csv', header=None)).T.reshape(n_realizations, xy_dim,xy_dim), axes=(0,2,1))
     for i in range(n_realizations):
-        well_opr[i] = loadmat('simulations/response_production/production_{}.mat'.format(i+1))['Prod']['opr'][0][0][1:, 3:]*5.4344E5 #to bbls
-        well_wpr[i] = loadmat('simulations/response_production/production_{}.mat'.format(i+1))['Prod']['wpr'][0][0][1:, 3:]*5.4344E5 #to bbls
-        well_wcut[i] = loadmat('simulations/response_production/production_{}.mat'.format(i+1))['Prod']['wc'][0][0][1:, 3:]
+        well_opr[i] = loadmat('simulations 2D/response_production/production_{}.mat'.format(i+1))['Prod']['opr'][0][0][1:, 3:]*5.4344E5 #to bbls
+        well_wpr[i] = loadmat('simulations 2D/response_production/production_{}.mat'.format(i+1))['Prod']['wpr'][0][0][1:, 3:]*5.4344E5 #to bbls
+        well_wcut[i] = loadmat('simulations 2D/response_production/production_{}.mat'.format(i+1))['Prod']['wc'][0][0][1:, 3:]
     for i in range(n_realizations):
-        poro[i,:,:] = loadmat('simulations/features_porosity/porosity_{}.mat'.format(i+1))['poro'].flatten().reshape(xy_dim,xy_dim)
-        perm[i,:,:] = np.log10(loadmat('simulations/features_permeability/permeability_{}.mat'.format(i+1))['permeability']).flatten().reshape(xy_dim,xy_dim)
-        pressure[i,:,:,:]   = loadmat('simulations/response_pressure/pressure_{}.mat'.format(i+1))['pres'].T.reshape(n_timesteps,xy_dim,xy_dim)**0.00689476 #to psi
-        saturation[i,:,:,:] = loadmat('simulations/response_saturation/saturation_{}.mat'.format(i+1))['satu'].T.reshape(n_timesteps,xy_dim,xy_dim)
+        poro[i,:,:] = loadmat('simulations 2D/features_porosity/porosity_{}.mat'.format(i+1))['poro'].flatten().reshape(xy_dim,xy_dim)
+        perm[i,:,:] = np.log10(loadmat('simulations 2D/features_permeability/permeability_{}.mat'.format(i+1))['permeability']).flatten().reshape(xy_dim,xy_dim)
+        pressure[i,:,:,:]   = loadmat('simulations 2D/response_pressure/pressure_{}.mat'.format(i+1))['pres'].T.reshape(n_timesteps,xy_dim,xy_dim)**0.00689476 #to psi
+        saturation[i,:,:,:] = loadmat('simulations 2D/response_saturation/saturation_{}.mat'.format(i+1))['satu'].T.reshape(n_timesteps,xy_dim,xy_dim)
 
-    np.save('data/well_opr.npy', well_opr); np.save('data/well_wpr.npy', well_wpr); np.save('data/well_wcut.npy', well_wcut)
-    np.save('data/poro.npy', poro); np.save('data/perm.npy', perm); np.save('data/channels.npy', channels)
-    np.save('data/pressure.npy', pressure); np.save('data/saturation.npy', saturation); np.save('data/timestamps.npy', timestamps)
+    np.save('simulations 2D/data/well_opr.npy', well_opr)
+    np.save('simulations 2D/data/well_wpr.npy', well_wpr)
+    np.save('simulations 2D/data/well_wcut.npy', well_wcut)
+    np.save('simulations 2D/data/poro.npy', poro)
+    np.save('simulations 2D/data/perm.npy', perm)
+    np.save('simulations 2D/data/channels.npy', channels)
+    np.save('simulations 2D/data/pressure.npy', pressure)
+    np.save('simulations 2D/data/saturation.npy', saturation)
+    np.save('simulations 2D/data/timestamps.npy', timestamps)
     return timestamps, poro, perm, channels, pressure, saturation, well_opr, well_wpr, well_wcut
 
 def load_arrays():
-    timestamps           = np.load('data/timestamps.npy')
-    poro, perm, channels = np.load('data/poro.npy'), np.load('data/perm.npy'), np.load('data/channels.npy')
-    pressure, saturation = np.load('data/pressure.npy'), np.load('data/saturation.npy')
-    well_opr, well_wpr, well_wcut = np.load('data/well_opr.npy'), np.load('data/well_wpr.npy'), np.load('data/well_wcut.npy')
+    timestamps = np.load('simulations 2D/data/timestamps.npy')
+    poro       = np.load('simulations 2D/data/poro.npy')
+    perm       = np.load('simulations 2D/data/perm.npy')
+    channels   = np.load('simulations 2D/data/channels.npy')
+    pressure   = np.load('simulations 2D/data/pressure.npy')
+    saturation = np.load('simulations 2D/data/saturation.npy')
+    well_opr   = np.load('simulations 2D/data/well_opr.npy')
+    well_wpr   = np.load('simulations 2D/data/well_wpr.npy')
+    well_wcut  = np.load('simulations 2D/data/well_wcut.npy')
     print('Perm: {} | Poro: {} | Channels: {} | Pressure: {} | Saturation: {}'.format(perm.shape, poro.shape, channels.shape, pressure.shape, saturation.shape))
     print('OPR: {} | WPR: {} | WCUT: {} | Timestamps: {}'.format(well_opr.shape, well_wpr.shape, well_wcut.shape, timestamps.shape))
     return timestamps, poro, perm, channels, pressure, saturation, well_opr, well_wpr, well_wcut
@@ -92,10 +103,10 @@ def split_xyw(poro, perm, channels, pressure, saturation, well_opr, well_wpr, we
     return X_data, y_data, w_data
 
 def load_xywt():
-    x = np.load('data/X_data.npy')
-    y = np.load('data/y_data.npy')
-    w = np.load('data/w_data.npy')
-    t = np.load('data/timestamps.npy')
+    x = np.load('simulations 2D/data/X_data.npy')
+    y = np.load('simulations 2D/data/y_data.npy')
+    w = np.load('simulations 2D/data/w_data.npy')
+    t = np.load('simulations 2D/data/timestamps.npy')
     print('X shape: {} | y shape: {} \nw shape: {} | t shape: {}'.format(x.shape, w.shape, y.shape, t.shape))
     return x, y, w, t
 
