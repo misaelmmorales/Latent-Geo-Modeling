@@ -21,3 +21,12 @@ from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense
 from keras.optimizers import Adam
 from keras.losses import mean_squared_error as loss_mse
 ################################################################################################
+
+def check_tensorflow_gpu():
+    sys_info = tf.sysconfig.get_build_info()
+    print('Tensorflow built with CUDA?',  tf.test.is_built_with_cuda())
+    print('Tensorflow version:', tf.__version__)
+    print('# GPU available:', len(tf.config.experimental.list_physical_devices('GPU')))
+    print("CUDA: {} | cuDNN: {}".format(sys_info["cuda_version"], sys_info["cudnn_version"]))
+    print(tf.config.list_physical_devices())
+    return None

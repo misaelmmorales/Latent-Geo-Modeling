@@ -1,0 +1,17 @@
+Normalized Hard Data
+4
+X
+Y
+Z
+NormHardData
+47  47 0  2.53103
+0   0  0  2.49897
+0   47 0  1.78921
+47  0  0  1.82905
+47  47 7  2.3
+0   0  7  2.1
+0   47 7  1.5
+47  0  7  1.6
+
+# spherical sk // ranges 15 10 5 // dip 2 // nugget 0.01 contribution 0.3
+

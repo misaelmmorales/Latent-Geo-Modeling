@@ -83,7 +83,6 @@ while t < T
     assert(max(rSol.s(:,1)) < 1+eps && min(rSol.s(:,1)) > -eps);
     rSol = incompTPFA(rSol, G, trans, fluid, 'wells', W);
     t = t + dT;
-
     if ( t < plotNo*dTplot && t <T), continue, end
     [wres{:}] = prodCurves(W, rSol, fluid);
     Prod      = append_wres(Prod, t, wres{:});
