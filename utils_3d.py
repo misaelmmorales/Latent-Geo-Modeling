@@ -129,6 +129,7 @@ def split_xywt(facies, poro, perm, pres, satu, prod, timestamps, save=False):
     X_data[...,0] = my_normalize(pres, feature='dynamic')
     X_data[...,1] = satu
     w_data = my_normalize(prod, feature='data')
+
     if save:
         np.save('E:/Latent_Geo_Inversion/simulations_3D/data/X_data.npy', X_data)
         np.save('E:/Latent_Geo_Inversion/simulations_3D/data/y_data.npy', y_data)
@@ -146,18 +147,20 @@ def load_xywt():
     return x, y, w, t
 
 def my_train_test_split(X, y, w, n_train=250, n_obs=30):
-    def reshape3D(data3d, len_tr_or_te):
+    def reshape_y(data3d, len_tr_or_te):
         return np.moveaxis(data3d, -2, 1).reshape(len_tr_or_te*8, xy_dim, xy_dim, 3)
-    def reshape4D(data4d, len_tr_or_te):
-        return np.moveaxis(data4d, -2, 1).reshape(len_tr_or_te*8, 40, n_obs, 2)
+    def reshape_X(data4d, len_tr_or_te):
+        return np.moveaxis(data4d, -2, 1).reshape(len_tr_or_te*8, n_timesteps, n_obs, 2)
+    def reshape_w(data2d, len_tr_or_te):
+        return np.moveaxis(np.repeat(np.expand_dims(data2d,-1), 8, -1),-1,1).reshape(len_tr_or_te*8,n_timesteps,9,4)
     train_idx = np.random.choice(np.arange(n_realizations), n_train, replace=False)
     test_idx  = np.setdiff1d(np.arange(n_realizations), train_idx)
     randx = np.random.randint(xy_dim, size=n_obs)
     randy = np.random.randint(xy_dim, size=n_obs)
     n_train, n_test = len(train_idx), len(test_idx)
-    X_train, X_test = reshape4D(X[train_idx][:,:,randx,randy], n_train), reshape4D(X[test_idx][:,:,randx,randy], n_test)
-    y_train, y_test = reshape3D(y[train_idx], n_train), reshape3D(y[test_idx], n_test)
-    w_train, w_test = w[train_idx], w[test_idx]
+    X_train, X_test = reshape_X(X[train_idx][:,:,randx,randy], n_train), reshape_X(X[test_idx][:,:,randx,randy], n_test)
+    y_train, y_test = reshape_y(y[train_idx], n_train), reshape_y(y[test_idx], n_test)
+    w_train, w_test = reshape_w(w[train_idx], n_train), reshape_w(w[test_idx], n_test)
     print('X_train shape: {} | X_test shape: {}'.format(X_train.shape, X_test.shape))
     print('w_train shape: {}   | w_test shape: {}'.format(w_train.shape, w_test.shape))
     print('y_train shape: {} | y_test shape: {}'.format(y_train.shape, y_test.shape))
@@ -314,12 +317,12 @@ def make_data_ae(w, code_dim=300, z_dim=10, epochs=100, batch=50, opt=Adam(1e-3)
     wparams = vae.count_params()
     start = time()
     fit = vae.fit(w, w, epochs=epochs, batch_size=batch, 
-                            verbose=0, validation_split=0.2)
+                            verbose=0, validation_split=0.2, shuffle=True)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(wparams,traintime))
     return enc, dec, vae, fit
 
-def make_static_ae(y, epochs=300, batch=50, opt=Adam(1e-3), ssim_perc=(2/3)):
+def make_static_ae(y, epochs=350, batch=50, opt=Adam(1e-3), ssim_perc=(2/3)):
     input_static = Input(shape=y.shape[1:])
     _ = conv_block(input_static, 8)
     _ = conv_block(_, 16)
@@ -345,12 +348,13 @@ def make_static_ae(y, epochs=300, batch=50, opt=Adam(1e-3), ssim_perc=(2/3)):
     ae.compile(optimizer=opt, metrics=['mse'])
     yparams = ae.count_params()
     start = time()
-    fit = ae.fit(y, y, epochs=epochs, batch_size=batch, verbose=0, validation_split=0.2)
+    fit = ae.fit(y, y, epochs=epochs, batch_size=batch, 
+                 verbose=0, validation_split=0.2, shuffle=True)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(yparams,traintime))
     return enc, dec, ae, fit
 
-def make_dynamic_ae(x, code_dim=1000, z_dim=10, epochs=200, batch=50, opt=Adam(1e-3)):
+def make_dynamic_ae(x, code_dim=1000, z_dim=20, epochs=200, batch=50, opt=Adam(1e-3)):
     def sample(args, mu=0.0, std=1.0):
         mean, sigma = args
         epsilon = K.random_normal(shape=(K.shape(mean)[0],z_dim), mean=mu, stddev=std)
@@ -381,7 +385,7 @@ def make_dynamic_ae(x, code_dim=1000, z_dim=10, epochs=200, batch=50, opt=Adam(1
     xparams = vae.count_params()
     start = time()
     fit = vae.fit(x, x, epochs=epochs, batch_size=batch, 
-                        verbose=0, validation_split=0.2)
+                        verbose=0, validation_split=0.2, shuffle=True)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(xparams,traintime))
     return enc, dec, vae, fit
