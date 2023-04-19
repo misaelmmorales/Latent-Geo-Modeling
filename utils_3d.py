@@ -19,7 +19,7 @@ from tensorflow_addons.layers import InstanceNormalization, GELU
 from keras.layers import BatchNormalization, LayerNormalization, PReLU, LeakyReLU
 from keras.layers import Flatten, Reshape, Concatenate, Lambda
 from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense, Dropout
-from keras.optimizers import Adam
+from keras.optimizers import Adam, Nadam
 from keras.losses import mean_squared_error as loss_mse
 from tensorflow.image import ssim as loss_ssim
 ################################################################################################
@@ -485,37 +485,44 @@ def make_ae_prediction(train_true, test_true, ae_model):
     return train_pred, test_pred
 
 def make_full_traintest(xtrain, xtest, wtrain, wtest, ytrain, ytest):
-    xfull = np.concatenate([xtrain, xtest])
-    wfull = np.concatenate([wtrain, wtest])
-    yfull = np.concatenate([ytrain, ytest])
+    n_train, n_test = int(xtrain.shape[0]/z_depth), int(xtest.shape[0]/z_depth)
+    n_obs = int(xtrain.shape[-2])
+    xtr0 = xtrain.reshape(n_train,z_depth,n_timesteps,n_obs,dynamic_channels)
+    xte0 = xtest.reshape(n_test,z_depth,n_timesteps,n_obs,dynamic_channels)
+    xfull = np.concatenate([xtr0, xte0]).reshape(n_realizations*z_depth,n_timesteps,n_obs,dynamic_channels)
+    ytr0 = ytrain.reshape(n_train,z_depth,xy_dim,xy_dim,static_channels)
+    yte0 = ytest.reshape(n_test,z_depth,xy_dim,xy_dim,static_channels)
+    yfull = np.concatenate([ytr0,yte0]).reshape(n_realizations*z_depth,xy_dim,xy_dim,static_channels)
+    wtr0 = wtrain.reshape(n_train,z_depth,n_timesteps,n_wells,data_channels)
+    wte0 = wtest.reshape(n_test,z_depth,n_timesteps,n_wells,data_channels)
+    wfull = np.concatenate([wtr0,wte0]).reshape(n_realizations*z_depth,n_timesteps,n_wells,data_channels)
     print('X_full: {} | w_full: {} | y_full: {}'.format(xfull.shape, wfull.shape, yfull.shape))
     return xfull, wfull, yfull
 
 def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec, 
-                            opt=Adam(1e-5), loss='mse', epochs=800, batch=80):
+                            opt=Nadam(1e-4), loss='mse', epochs=600, batch=80):
     dynamic_enc.trainable = False
     data_enc.trainable    = False
     static_dec.trainable  = False
-    def dense_block(input, neurons, drop=0.2):
+    def dense_block(input, neurons):
         _ = Dense(neurons)(input)
-        #_ = LayerNormalization()(_)
+        _ = LayerNormalization()(_)
         _ = BatchNormalization()(_)
         _ = LeakyReLU()(_)
-        _ = Dropout(drop)(_)
         return _
     x_inp = Input(shape=xf.shape[1:])
     x_latent = dynamic_enc(x_inp)[-1]
-    x = dense_block(x_latent, 1000)
-    x = dense_block(x, 2000)
+    #x = dense_block(x_latent, 1000)
+    #x = dense_block(x, 2000)
     w_inp = Input(shape=wf.shape[1:])
     w_latent = data_enc(w_inp)[-1]
-    w = dense_block(w_latent, 300)
-    w = dense_block(w, 600)
-    w = dense_block(w, 1000)
-    _ = Concatenate()([x, w])
+    #w = dense_block(w_latent, 300)
+    #w = dense_block(w, 600)
+    #w = dense_block(w, 1000)
+    _ = Concatenate()([x_latent, w_latent])
     _ = LayerNormalization()(_)
-    _ = dense_block(_, 5000)
-    _ = dense_block(_, 6*6*64)
+    _ = dense_block(_, 2000)
+    _ = Dense(6*6*64)(_)
     out = static_dec(_)
     reg = Model([x_inp, w_inp], out)
     rparams = reg.count_params()
@@ -540,5 +547,20 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     return inv_train, inv_test
 
-def make_inv_backnorm(data_inv, data_orig):
-    return None
+def make_inv_backnorm(data_inv, data_orig, idxs):
+    inv_train, inv_test = data_inv
+    n_train, n_test = int(inv_train.shape[0]/z_depth), int(inv_test.shape[0]/z_depth)
+    inv_tr0 = inv_train.reshape(n_train,z_depth,xy_dim,xy_dim,static_channels)
+    inv_te0 = inv_test.reshape(n_test,z_depth,xy_dim,xy_dim,static_channels)
+    new_pred = np.moveaxis(np.concatenate([inv_tr0,inv_te0]),1,-2)
+    new_true = np.take(data_orig, np.concatenate([idxs[0],idxs[1]]), axis=0)
+
+    facies_scaler = my_normalize(new_true[...,0], mode='forward', feature='static')[1]
+    poro_scaler   = my_normalize(new_true[...,1], mode='forward', feature='static')[1]
+    perm_scaler   = my_normalize(new_true[...,2], mode='forward', feature='static')[1]
+
+    facies_hat = my_normalize(new_pred[...,0], scaler=facies_scaler, mode='inverse')
+    poro_hat   = my_normalize(new_pred[...,1], scaler=poro_scaler, mode='inverse')
+    perm_hat   = my_normalize(new_pred[...,2], scaler=perm_scaler, mode='inverse')
+
+    return facies_hat, poro_hat, perm_hat
