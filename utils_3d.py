@@ -1,6 +1,5 @@
 ################################################################################################
 import numpy as np
-import pandas as pd
 import tensorflow as tf
 
 import matplotlib.pyplot as plt
@@ -10,20 +9,22 @@ from scipy.io import loadmat
 from time import time
 
 from sklearn.preprocessing import MinMaxScaler
-from skimage.metrics import mean_squared_error as img_mse
+from skimage.metrics import mean_squared_error    as img_mse
 from skimage.metrics import structural_similarity as img_ssim
 
 import keras.backend as K
 from keras import Model, Input
 from tensorflow_addons.layers import InstanceNormalization, GELU
-from keras.layers import BatchNormalization, LayerNormalization, PReLU, LeakyReLU
+from keras.layers import BatchNormalization, LayerNormalization, PReLU, Dropout
 from keras.layers import Flatten, Reshape, Concatenate, Lambda
-from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense, Dropout
-from keras.optimizers import Adam, Nadam
+from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense
+from keras.optimizers import Adam
 from keras.losses import mean_squared_error as loss_mse
 from tensorflow.image import ssim as loss_ssim
-################################################################################################
 
+################################################################################################
+########################################## DATALOADER ##########################################
+################################################################################################
 n_realizations, n_timesteps = 318, 40
 xy_dim, z_depth, n_wells    = 48, 8, 9
 static_channels, dynamic_channels, data_channels = 3, 2, 4
@@ -167,6 +168,8 @@ def my_train_test_split(X, y, w, n_train=250, n_obs=30):
     print('y_train shape: {} | y_test shape: {}'.format(y_train.shape, y_test.shape))
     return X_train, X_test, y_train, y_test, w_train, w_test, idxs, rands
 
+################################################################################################
+########################################## PLOT UTILS ##########################################
 ################################################################################################
 def plot_data(timestamps, production, multiplier=1, ncols=10, figsize=(25,8)):
     labels = ['BHP [psia]', 'Oil rate [stb/d]', 'Water rate [stb/d]', 'Water Cut [v/v]']
@@ -343,6 +346,8 @@ def plot_dynamic_results(true, pred, channel_select=0, ncols=10, multiplier=1, f
     fig.text(0.5, 0.01, 'Timestep [years]', ha='center')
 
 ################################################################################################
+######################################### MODEL UTILS ##########################################
+################################################################################################
 def conv_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(inp)
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(_)
@@ -500,36 +505,36 @@ def make_full_traintest(xtrain, xtest, wtrain, wtest, ytrain, ytest):
     return xfull, wfull, yfull
 
 def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec, 
-                            opt=Nadam(1e-4), loss='mse', epochs=600, batch=80):
+                            opt=Adam(1e-5), loss='mse', epochs=750, batch=80):
     dynamic_enc.trainable = False
     data_enc.trainable    = False
     static_dec.trainable  = False
     def dense_block(input, neurons):
-        _ = Dense(neurons, kernel_regularizer='l1')(input)
+        _ = Dense(neurons)(input)
         _ = LayerNormalization()(_)
-        #_ = BatchNormalization()(_)
-        _ = LeakyReLU()(_)
+        _ = BatchNormalization()(_)
+        _ = PReLU()(_)
         return _
     x_inp = Input(shape=xf.shape[1:])
     x_latent = dynamic_enc(x_inp)[-1]
-    #x = dense_block(x_latent, 1000)
-    #x = dense_block(x, 2000)
+    x = dense_block(x_latent, 1000)
+    x = dense_block(x, 2000)
     w_inp = Input(shape=wf.shape[1:])
     w_latent = data_enc(w_inp)[-1]
-    #w = dense_block(w_latent, 300)
-    #w = dense_block(w, 600)
-    #w = dense_block(w, 1000)
-    _ = Concatenate()([x_latent, w_latent])
+    w = dense_block(w_latent, 300)
+    w = dense_block(w, 600)
+    w = dense_block(w, 1000)
+    _ = Concatenate()([x, w])
     _ = LayerNormalization()(_)
-    #_ = dense_block(_, 2000)
-    _ = Dense(6*6*64)(_)
-    out = static_dec(_)
-    reg = Model([x_inp, w_inp], out)
+    _ = dense_block(_, 5000)
+    _ = dense_block(_, 6*6*64)
+    y_out = static_dec(_)
+    reg = Model([x_inp, w_inp], y_out)
     rparams = reg.count_params()
     reg.compile(optimizer=opt, loss=loss, metrics=['mse'])
     start = time()
     fit = reg.fit([xf, wf], yf, epochs=epochs, batch_size=batch, 
-                    verbose=0, validation_split=0.2, shuffle=True)
+                    verbose=0, validation_split=0.2)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(rparams,traintime))
     return reg, fit
@@ -550,7 +555,7 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
 def make_inv_backnorm(data_inv, data_orig, idxs):
     inv_train, inv_test = data_inv
     facies0, poro0, perm0 = data_orig
-    data0 = np.concatenate([np.expand_dims(facies0,-1), np.expand_dims(poro0,-1), np.expand_dims(perm0,-1)], -1)
+    data0 = np.concatenate([np.expand_dims(facies0,-1),np.expand_dims(poro0,-1),np.expand_dims(perm0,-1)], -1)
     n_train, n_test = int(inv_train.shape[0]/z_depth), int(inv_test.shape[0]/z_depth)
     inv_tr0 = inv_train.reshape(n_train,z_depth,xy_dim,xy_dim,static_channels)
     inv_te0 = inv_test.reshape(n_test,z_depth,xy_dim,xy_dim,static_channels)

@@ -20,8 +20,10 @@ from keras.layers import Flatten, Reshape, Concatenate, Lambda
 from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense
 from keras.optimizers import Adam
 from keras.losses import mean_squared_error as loss_mse
-################################################################################################
 
+################################################################################################
+########################################## DATALOADER ##########################################
+################################################################################################
 n_realizations = 1000
 n_timesteps    = 45
 xy_dim         = 128
@@ -128,7 +130,9 @@ def make_inv_backnorm(inv_tuple, true_tuple):
     chan_hat = my_normalize(inv_all[...,2], channels, mode='inverse')
     return poro_hat, perm_hat, chan_hat
 
-### Loss functions
+################################################################################################
+########################################## PLOT UTILS ##########################################
+################################################################################################
 def plot_loss(fit, title='', figsize=None):
     if figsize:
         plt.figure(figsize=figsize)
@@ -148,7 +152,6 @@ def plot_loss_all(loss1, loss2, loss3, title1='Data', title2='Static', title3='D
     plt.subplot(132); plot_loss(loss2, title=title2)
     plt.subplot(133); plot_loss(loss3, title=title3)
 
-### Visualize original data individiually
 def plot_static(poro, perm, channels, multiplier=1, ncols=10, figsize=(20,4), cmaps=['binary', 'viridis', 'jet']):
     labels = ['facies', 'porosity', 'permeability']
     fig, axs = plt.subplots(nrows=3, ncols=ncols, figsize=figsize, facecolor='white')
@@ -194,7 +197,6 @@ def plot_data(timestamps, opr, wpr, wcut, multiplier=1, ncols=10, figsize=(20,6)
             axs[j,i].grid('on')
     fig.legend(labels=well_names, loc='right', bbox_to_anchor=(0.95, 0.5))   
 
-
 def make_dynamic_animation(static, dynamic, ncols=11, multiplier=10, figsize=(20,6), static_label='poro', static_cmap='viridis', interval=100, blit=False):
     labels = [static_label, 'pressure', 'saturation']
     pressure, saturation = dynamic
@@ -221,7 +223,6 @@ def make_dynamic_animation(static, dynamic, ncols=11, multiplier=10, figsize=(20
     ani.save('figures/dynamic_animation.gif')
     plt.show()
 
-### Engineering dynamic observations (observation wells)
 def plot_X_observation(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
     fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
     for i in range(ncols):
@@ -261,7 +262,6 @@ def plot_X_img_observation(data, randx, randy, timing=-1, multiplier=1, ncols=10
     axs[0,0].set(ylabel='Pressure')
     axs[1,0].set(ylabel='Saturation')
 
-### truth vs. predicted results
 def plot_data_results(timestamps, true_train, true_test, pred_train, pred_test, channel_select=0, figsize=(20,4), ncols=10, multiplier=1):
     colors = ['k', 'b', 'g']
     fig, axs = plt.subplots(2, ncols, figsize=figsize, facecolor='white')
@@ -329,7 +329,9 @@ def plot_inversion_result(truth, prediction, channel_select=0, multiplier=10, nc
     plt.colorbar(im2, pad=0.04, fraction=0.046)
     plt.colorbar(im3, pad=0.04, fraction=0.046)
 
-### define convolution and deconvolution blocks #############################
+################################################################################################
+######################################### MODEL UTILS ##########################################
+################################################################################################
 def conv_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(inp)
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(_)
@@ -348,7 +350,6 @@ def decon_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
     _ = UpSampling2D(pool)(_)
     return _
 
-### Make Data, Static, Dynamic autoencoders #################################
 def make_data_ae(w, code_dim=300, z_dim=10, epochs=100, batch=50, opt=Adam(1e-3)):
     def sample(args, mu=0.0, std=1.0):
         mean, sigma = args
@@ -454,7 +455,6 @@ def make_dynamic_ae(x, code_dim=1000, z_dim=10, epochs=200, batch=80, opt=Adam(1
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(xparams,traintime))
     return enc, dec, vae, fit
 
-### generate autoencoder predictions ########################################
 def make_ae_prediction(train_true, test_true, ae_model):
     train_pred = ae_model.predict(train_true).astype('float64')
     test_pred  = ae_model.predict(test_true).astype('float64')
@@ -469,7 +469,6 @@ def make_ae_prediction(train_true, test_true, ae_model):
         print('Image data must have shape at least (7x7) for ssim calculation')
     return train_pred, test_pred
 
-### make full train+test dataframes #########################################
 def make_full_traintest(xtrain, xtest, wtrain, wtest, ytrain, ytest):
     xfull = np.concatenate([xtrain,xtest])
     wfull = np.concatenate([wtrain,wtest])
@@ -477,7 +476,6 @@ def make_full_traintest(xtrain, xtest, wtrain, wtest, ytrain, ytest):
     print('X_full: {} | w_full: {} | y_full: {}'.format(xfull.shape, wfull.shape, yfull.shape))
     return xfull, wfull, yfull
 
-### Make latent space regressor model #######################################
 def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec, 
                             opt=Adam(1e-5), loss='mse', epochs=500, batch=80):
     dynamic_enc.trainable = False
@@ -512,7 +510,6 @@ def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec,
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(rparams,traintime))
     return reg, fit
 
-### generate inversion predictions ##########################################
 def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     xtrain, xtest = x_tuple
     wtrain, wtest = w_tuple
