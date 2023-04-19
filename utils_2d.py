@@ -513,9 +513,10 @@ def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec,
     return reg, fit
 
 ### generate inversion predictions ##########################################
-def make_inv_prediction(regmodel, x_tuple, w_tuple, ytrain, ytest):
+def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     xtrain, xtest = x_tuple
     wtrain, wtest = w_tuple
+    ytrain, ytest = y_tuple
     inv_train = regmodel.predict([xtrain, wtrain]).astype('float64')
     inv_test = regmodel.predict([xtest, wtest]).astype('float64')
     mse_train, mse_test = img_mse(ytrain, inv_train), img_mse(ytest, inv_test)

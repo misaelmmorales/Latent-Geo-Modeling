@@ -4,31 +4,29 @@ import pandas as pd
 import tensorflow as tf
 
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import pyvista as pv
 
 from scipy.io import loadmat
 from time import time
 
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error
 from skimage.metrics import mean_squared_error as img_mse
-from skimage.metrics import structural_similarity
+from skimage.metrics import structural_similarity as img_ssim
 
 import keras.backend as K
 from keras import Model, Input
 from tensorflow_addons.layers import InstanceNormalization, GELU
-from keras.layers import BatchNormalization, LayerNormalization, PReLU
-from keras.layers import Conv3D, AveragePooling3D, UpSampling3D, LeakyReLU
+from keras.layers import BatchNormalization, LayerNormalization, PReLU, LeakyReLU
 from keras.layers import Flatten, Reshape, Concatenate, Lambda
 from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense, Dropout
 from keras.optimizers import Adam
 from keras.losses import mean_squared_error as loss_mse
+from tensorflow.image import ssim as loss_ssim
 ################################################################################################
 
-n_realizations = 318
-n_timesteps    = 40
-xy_dim         = 48
+n_realizations, n_timesteps = 318, 40
+xy_dim, z_depth, n_wells    = 48, 8, 9
+static_channels, dynamic_channels, data_channels = 3, 2, 4
 
 def check_tensorflow_gpu():
     sys_info = tf.sysconfig.get_build_info()
@@ -88,10 +86,10 @@ def make_initial_data(n_realizations=n_realizations, save=True):
     prod = np.zeros((n_realizations,n_timesteps,9,4))
     for i in range(n_realizations):
         k = i+1
-        satu[i] = np.moveaxis(loadmat('E:/Latent_Geo_Inversion/simulations_3D/saturation/saturation_{}.mat'.format(k))['satu'].reshape(40,8,48,48).T, -1, 0)
-        pres[i] = np.moveaxis(loadmat('E:/Latent_Geo_Inversion/simulations_3D/pressure/pressure_{}.mat'.format(k))['pres'].reshape(40,8,48,48).T, -1, 0)/10
-        poro[i] = loadmat('E:/Latent_Geo_Inversion/simulations_3D/porosity/porosity_{}.mat'.format(k))['porosity'].reshape(8,48,48).T
-        perm[i] = loadmat('E:/Latent_Geo_Inversion/simulations_3D/permeability/permeability_{}.mat'.format(k))['perm_md'].reshape(8,48,48).T
+        satu[i] = np.moveaxis(loadmat('E:/Latent_Geo_Inversion/simulations_3D/saturation/saturation_{}.mat'.format(k))['satu'].reshape(n_timesteps,z_depth,xy_dim,xy_dim).T, -1, 0)
+        pres[i] = np.moveaxis(loadmat('E:/Latent_Geo_Inversion/simulations_3D/pressure/pressure_{}.mat'.format(k))['pres'].reshape(n_timesteps,z_depth,xy_dim,xy_dim).T, -1, 0)/10
+        poro[i] = loadmat('E:/Latent_Geo_Inversion/simulations_3D/porosity/porosity_{}.mat'.format(k))['porosity'].reshape(z_depth,xy_dim,xy_dim).T
+        perm[i] = loadmat('E:/Latent_Geo_Inversion/simulations_3D/permeability/permeability_{}.mat'.format(k))['perm_md'].reshape(z_depth,xy_dim,xy_dim).T
         prod[i] = loadmat('E:/Latent_Geo_Inversion/simulations_3D/production/production_{}'.format(k))['production']
     prod[:,:,:,0] /= 75
     facies = np.load('simulations 3D/facies_maps_48_48_8.npy')
@@ -121,15 +119,14 @@ def load_initial_data():
     return satu, pres, poro, perm, facies, prod, timestamps
 
 def split_xywt(facies, poro, perm, pres, satu, prod, timestamps, save=False):
-    y_data = np.zeros((n_realizations,xy_dim,xy_dim,8,3))
-    y_data[...,0], facies_scaler = my_normalize(facies, feature='static')
-    y_data[...,1], poro_scaler   = my_normalize(poro, feature='static')
-    y_data[...,2], perm_scaler   = my_normalize(np.log10(perm), feature='static')
-    X_data = np.zeros((n_realizations,n_timesteps,xy_dim,xy_dim,8,2))
+    y_data = np.zeros((n_realizations,xy_dim,xy_dim,z_depth,static_channels))
+    y_data[...,0] = my_normalize(facies, feature='static')[0]
+    y_data[...,1] = my_normalize(poro, feature='static')[0]
+    y_data[...,2] = my_normalize(np.log10(perm), feature='static')[0]
+    X_data = np.zeros((n_realizations,n_timesteps,xy_dim,xy_dim,z_depth,dynamic_channels))
     X_data[...,0] = my_normalize(pres, feature='dynamic')
     X_data[...,1] = satu
     w_data = my_normalize(prod, feature='data')
-
     if save:
         np.save('E:/Latent_Geo_Inversion/simulations_3D/data/X_data.npy', X_data)
         np.save('E:/Latent_Geo_Inversion/simulations_3D/data/y_data.npy', y_data)
@@ -148,30 +145,34 @@ def load_xywt():
 
 def my_train_test_split(X, y, w, n_train=250, n_obs=30):
     def reshape_y(data3d, len_tr_or_te):
-        return np.moveaxis(data3d, -2, 1).reshape(len_tr_or_te*8, xy_dim, xy_dim, 3)
+        y0 = np.moveaxis(data3d, -2, 1).reshape(len_tr_or_te*z_depth,xy_dim,xy_dim,static_channels)
+        return y0
     def reshape_X(data4d, len_tr_or_te):
-        return np.moveaxis(data4d, -2, 1).reshape(len_tr_or_te*8, n_timesteps, n_obs, 2)
+        x0 = np.moveaxis(data4d, -2, 1).reshape(len_tr_or_te*z_depth,n_timesteps,n_obs,dynamic_channels)
+        return x0
     def reshape_w(data2d, len_tr_or_te):
-        return np.moveaxis(np.repeat(np.expand_dims(data2d,-1), 8, -1),-1,1).reshape(len_tr_or_te*8,n_timesteps,9,4)
+        w1 = np.moveaxis(np.repeat(np.expand_dims(data2d,-1), z_depth, -1),-1,1)
+        w0 = w1.reshape(len_tr_or_te*z_depth,n_timesteps,n_wells,data_channels)
+        return w0
     train_idx = np.random.choice(np.arange(n_realizations), n_train, replace=False)
     test_idx  = np.setdiff1d(np.arange(n_realizations), train_idx)
-    randx = np.random.randint(xy_dim, size=n_obs)
-    randy = np.random.randint(xy_dim, size=n_obs)
+    randx, randy = np.random.randint(xy_dim, size=n_obs), np.random.randint(xy_dim, size=n_obs)
+    idxs, rands = [train_idx, test_idx], [randx, randy]
     n_train, n_test = len(train_idx), len(test_idx)
     X_train, X_test = reshape_X(X[train_idx][:,:,randx,randy], n_train), reshape_X(X[test_idx][:,:,randx,randy], n_test)
     y_train, y_test = reshape_y(y[train_idx], n_train), reshape_y(y[test_idx], n_test)
     w_train, w_test = reshape_w(w[train_idx], n_train), reshape_w(w[test_idx], n_test)
     print('X_train shape: {} | X_test shape: {}'.format(X_train.shape, X_test.shape))
-    print('w_train shape: {}   | w_test shape: {}'.format(w_train.shape, w_test.shape))
+    print('w_train shape: {}  | w_test shape: {}'.format(w_train.shape, w_test.shape))
     print('y_train shape: {} | y_test shape: {}'.format(y_train.shape, y_test.shape))
-    return X_train, X_test, y_train, y_test, w_train, w_test, randx, randy
+    return X_train, X_test, y_train, y_test, w_train, w_test, idxs, rands
 
 ################################################################################################
 def plot_data(timestamps, production, multiplier=1, ncols=10, figsize=(25,8)):
     labels = ['BHP [psia]', 'Oil rate [stb/d]', 'Water rate [stb/d]', 'Water Cut [v/v]']
     well_names = ['I1','I2','I3','I4','I5','P1','P2','P3','P4']
-    fig, axs = plt.subplots(4, ncols, figsize=figsize)
-    for i in range(4):
+    fig, axs = plt.subplots(data_channels, ncols, figsize=figsize)
+    for i in range(data_channels):
         for j in range(ncols):
             axs[i,j].plot(timestamps, production[j*multiplier,:,:,i])
             axs[0,j].set(title='Realization {}'.format(j))
@@ -179,40 +180,38 @@ def plot_data(timestamps, production, multiplier=1, ncols=10, figsize=(25,8)):
         axs[i,0].set(ylabel=labels[i])
         fig.legend(labels=well_names, loc='right', bbox_to_anchor=(0.95, 0.5))   
 
-def plot_static(facies, poro, perm, multiplier=1, ncols=10, windowsize=(1500,200), cmaps=['jet','jet','jet']):
-    p = pv.Plotter(shape=(1,ncols))
-    for i in range(ncols):
-        p.subplot(0,i)
-        p.add_mesh(np.flip(facies[i*multiplier]), cmap=cmaps[0])
-    p.show(jupyter_backend='static', window_size=windowsize)
-    p = pv.Plotter(shape=(1,ncols))
-    for i in range(ncols):
-        p.subplot(0,i)
-        p.add_mesh(np.flip(poro[i*multiplier]), cmap=cmaps[1])
-    p.show(jupyter_backend='static', window_size=windowsize)
-    p = pv.Plotter(shape=(1,ncols))
-    for i in range(ncols):
-        p.subplot(0,i)
-        p.add_mesh(np.flip(np.log10(perm[i*multiplier])), cmap=cmaps[2])
+def plot_static(facies, poro, perm, multiplier=1, ncols=10, windowsize=(1500,600), cmaps=['viridis','jet','jet']):
+    data = [facies, poro, np.log10(perm)]
+    labels = ['Facies', 'Porosity', 'Log-Perm']
+    p = pv.Plotter(shape=(len(data),ncols))
+    for j in range(ncols):
+        for i in range(len(data)):
+            cb_args = {'title':labels[i], 'n_labels':3, 'fmt':'%.1f',
+                       'title_font_size':15, 'label_font_size':8}
+            p.subplot(i,j)
+            p.add_mesh(np.flip(data[i][j*multiplier]), cmap=cmaps[i], scalar_bar_args=cb_args)
+        p.subplot(0,j); p.add_title('Realization {}'.format(j*multiplier), font_size=6)
     p.show(jupyter_backend='static', window_size=windowsize)
 
-def plot_dynamic(static, dynamic, nrows=5, multiplier=1, windowsize=(1500,800), cmaps=['jet', 'jet']):
+def plot_dynamic(static, dynamic, nrows=5, multiplier=1, windowsize=(1500,800), cmaps=['viridis', 'jet']):
     times = [0, 4, 9, 14, 19, 24, 29, 34, 39]
     p = pv.Plotter(shape=(nrows, len(times)))
     for i in range(nrows):
         p.subplot(i,0)
-        p.add_mesh(np.flip(static[i*multiplier]), cmap=cmaps[0])
+        cb_s_args = {'title':'Static','n_labels':3,'fmt':'%.1f','title_font_size':15,'label_font_size':8}
+        p.add_mesh(np.flip(static[i*multiplier]), cmap=cmaps[0], scalar_bar_args=cb_s_args)
         p.add_title('Realization {}'.format(i*multiplier), font_size=8)
         for j in range(1,len(times)):
+            cb_d_args = {'title':'Dynamic','n_labels':3,'fmt':'%.1f','title_font_size':15,'label_font_size':8}
             p.subplot(i,j)
-            p.add_mesh(dynamic[i,times[j]], cmap=cmaps[1])
+            p.add_mesh(dynamic[i,times[j]], cmap=cmaps[1], scalar_bar_args=cb_d_args)
             p.add_title('step {}'.format(times[j]+1), font_size=8)
     p.show(jupyter_backend='satic', window_size=windowsize)
 
 def plot_X_observations(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
-    fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
-    n_samples, n_obs = int(data.shape[0]/8), int(data.shape[-2])
-    df = data.reshape(n_samples, 8, n_timesteps, n_obs, 2)
+    fig, axs = plt.subplots(dynamic_channels, ncols, figsize=figsize, sharex=True, sharey=True)
+    n_samples, n_obs = int(data.shape[0]/z_depth), int(data.shape[-2])
+    df = data.reshape(n_samples, z_depth, n_timesteps, n_obs, dynamic_channels)
     for i in range(ncols):
         k = i*multiplier
         axs[0,i].imshow(df[k,0,:,:,0].T, cmap=cmaps[0])
@@ -224,7 +223,7 @@ def plot_X_observations(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gn
     fig.text(0.1, 0.5, 'Location Index', va='center', rotation='vertical')
 
 def plot_X_line_observations(data, times, ncols=10, multiplier=1, figsize=(20,5)):
-    fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
+    fig, axs = plt.subplots(dynamic_channels, ncols, figsize=figsize, sharex=True, sharey=True)
     for i in range(ncols):
         k = i*multiplier
         axs[0,i].plot(times, data[k,:,:,0])
@@ -236,8 +235,9 @@ def plot_X_line_observations(data, times, ncols=10, multiplier=1, figsize=(20,5)
     axs[1,0].set_ylabel('Saturation')
     fig.text(0.5, 0.04, 'Time [years]', ha='center')
 
-def plot_X_img_observations(data, randx, randy, timing=-1, multiplier=1, ncols=10, figsize=(20,4), cmaps=['gnuplot2', 'jet']):
-    fig, axs = plt.subplots(2, ncols, figsize=figsize)
+def plot_X_img_observations(data, rands, timing=-1, multiplier=1, ncols=10, figsize=(20,4), cmaps=['gnuplot2', 'jet']):
+    randx, randy = rands
+    fig, axs = plt.subplots(dynamic_channels, ncols, figsize=figsize)
     for i in range(ncols):
         k = i*multiplier
         axs[0,i].imshow(data[k,timing,:,:,0,0], cmap=cmaps[0])
@@ -245,7 +245,7 @@ def plot_X_img_observations(data, randx, randy, timing=-1, multiplier=1, ncols=1
         axs[1,i].imshow(data[k,timing,:,:,0,1], cmap=cmaps[1])
         axs[1,i].scatter(randx, randy, marker='s', c='k')
         axs[0,i].set(title='Realization {}'.format(k))
-        for j in range(2):
+        for j in range(dynamic_channels):
             axs[j,i].set(xticks=[], yticks=[])
     axs[0,0].set(ylabel='Pressure')
     axs[1,0].set(ylabel='Saturation')
@@ -253,9 +253,8 @@ def plot_X_img_observations(data, randx, randy, timing=-1, multiplier=1, ncols=1
 def plot_loss(fit, title='', figsize=None):
     if figsize:
         plt.figure(figsize=figsize)
-    loss = fit.history['loss']
-    val  = fit.history['val_loss']
-    epochs = len(loss)
+    loss, val  = fit.history['loss'], fit.history['val_loss']
+    epochs     = len(loss)
     iterations = np.arange(epochs)
     plt.plot(iterations, loss, '-', label='loss')
     plt.plot(iterations, val, '-', label='validation loss')
@@ -263,19 +262,21 @@ def plot_loss(fit, title='', figsize=None):
     plt.ylabel('Epochs'); plt.ylabel('Loss')
     plt.xticks(iterations[::epochs//10])
 
-def plot_loss_all(loss1, loss2, loss3, title1='Data', title2='Static', title3='Dynamic', figsize=(15,3)):
+def plot_loss_all(loss1, loss2, loss3, titles=['Data','Static','Dynamic'], figsize=(15,3)):
     plt.figure(figsize=figsize, facecolor='white')
-    plt.subplot(131); plot_loss(loss1, title=title1)
-    plt.subplot(132); plot_loss(loss2, title=title2)
-    plt.subplot(133); plot_loss(loss3, title=title3)
+    losses = [loss1, loss2, loss3]
+    for i in range(len(losses)):
+        plt.subplot(1,len(losses),i+1)
+        plot_loss(losses[i], title=titles[i])
 
 def plot_data_results(timestamps, true, pred, ncols=10, multiplier=1, figsize=(20,8), suptitle='___'):
     colors = ['tab:blue','tab:orange','tab:green','tab:red','tab:purple','tab:brown','tab:pink','tab:olive','tab:cyan']
     labels = ['BHP [psia]', 'Oil Rate [stb/d]', 'Water Rate [stb/d]', 'Water Cut [%]']
-    fig, axs = plt.subplots(4, ncols, figsize=figsize, facecolor='white')
-    n_samples = int(true.shape[0]/8)
-    truth, hat = true.reshape(n_samples,8,len(timestamps),9,4), pred.reshape(n_samples,8,len(timestamps),9,4)
-    for i in range(4):
+    fig, axs = plt.subplots(data_channels, ncols, figsize=figsize, facecolor='white')
+    n_samples = int(true.shape[0]/z_depth)
+    truth = true.reshape(n_samples,z_depth,len(timestamps),n_wells,data_channels) 
+    hat   = pred.reshape(n_samples,z_depth,len(timestamps),n_wells,data_channels)
+    for i in range(data_channels):
         for j in range(ncols):
             for k in range(5):
                 axs[i,j].plot(timestamps, truth[j*multiplier,0,:,k,i], label='I{} true'.format(k+1), c=colors[k], linestyle='-')
@@ -286,7 +287,7 @@ def plot_data_results(timestamps, true, pred, ncols=10, multiplier=1, figsize=(2
             axs[0,j].set(title='Realization {}'.format(j*multiplier))
         axs[i,0].set(ylabel=labels[i])
     for j in range(1,ncols):
-        for i in range(4):
+        for i in range(data_channels):
             axs[i,j].set(yticks=[])
     for i in range(3):
         for j in range(ncols):
@@ -296,9 +297,9 @@ def plot_data_results(timestamps, true, pred, ncols=10, multiplier=1, figsize=(2
     plt.legend(bbox_to_anchor=(2, 4))
 
 def plot_static_results(true, pred, channel_select=0, ncols=10, multiplier=1, cmaps=['jet','seismic'], windowsize=(1500,800)):
-    n_samples = int(true.shape[0]/8)
-    truth = np.moveaxis(true.reshape(n_samples,8,xy_dim,xy_dim,3), 1, -2)
-    hat   = np.moveaxis(pred.reshape(n_samples,8,xy_dim,xy_dim,3), 1, -2)
+    n_samples = int(true.shape[0]/z_depth)
+    truth = np.moveaxis(true.reshape(n_samples,z_depth,xy_dim,xy_dim,static_channels), 1, -2)
+    hat   = np.moveaxis(pred.reshape(n_samples,z_depth,xy_dim,xy_dim,static_channels), 1, -2)
     labels = ['True', 'Prediction', 'Difference']
     fcmap  = [cmaps[0], cmaps[0], cmaps[1]]
     p = pv.Plotter(shape=(3,ncols))
@@ -316,8 +317,9 @@ def plot_static_results(true, pred, channel_select=0, ncols=10, multiplier=1, cm
 
 def plot_dynamic_results(true, pred, channel_select=0, ncols=10, multiplier=1, figsize=(20,4.5), suptitle='___'):
     fig, axs = plt.subplots(3, ncols, figsize=figsize, sharex=True, sharey=True)
-    n_samples, n_obs = int(true.shape[0]/8), int(true.shape[-2])
-    df_true, df_pred = true.reshape(n_samples,8,n_timesteps,n_obs,2), pred.reshape(n_samples,8,n_timesteps,n_obs,2)
+    n_samples, n_obs = int(true.shape[0]/z_depth), int(true.shape[-2])
+    df_true = true.reshape(n_samples,z_depth,n_timesteps,n_obs,dynamic_channels)
+    df_pred = pred.reshape(n_samples,z_depth,n_timesteps,n_obs,dynamic_channels)
     if channel_select==0:
         supertitle, fcmap = 'Pressure', 'turbo'
     elif channel_select==1:
@@ -390,12 +392,12 @@ def make_data_ae(w, code_dim=300, z_dim=10, epochs=100, batch=50, opt=Adam(1e-3)
     wparams = vae.count_params()
     start = time()
     fit = vae.fit(w, w, epochs=epochs, batch_size=batch, 
-                            verbose=0, validation_split=0.2, shuffle=True)
+                    verbose=0, validation_split=0.2, shuffle=True)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(wparams,traintime))
     return enc, dec, vae, fit
 
-def make_static_ae(y, epochs=350, batch=50, opt=Adam(1e-3), ssim_perc=(2/3)):
+def make_static_ae(y, epochs=600, batch=50, opt=Adam(1e-3), ssim_perc=(2/3)):
     input_static = Input(shape=y.shape[1:])
     _ = conv_block(input_static, 8)
     _ = conv_block(_, 16)
@@ -414,7 +416,7 @@ def make_static_ae(y, epochs=350, batch=50, opt=Adam(1e-3), ssim_perc=(2/3)):
     dec = Model(z_inp, output, name='static_decoder')
     output_static = dec(enc(input_static))
     ae = Model(input_static, output_static, name='static_ae')
-    ssim = 1 - tf.reduce_mean(tf.image.ssim(input_static, output_static, 1.0))
+    ssim = 1 - tf.reduce_mean(loss_ssim(input_static, output_static, 1.0))
     mse = loss_mse(input_static, output_static)
     dual_loss = (ssim_perc)*ssim + (1-ssim_perc)*mse
     ae.add_loss(dual_loss)
@@ -422,12 +424,12 @@ def make_static_ae(y, epochs=350, batch=50, opt=Adam(1e-3), ssim_perc=(2/3)):
     yparams = ae.count_params()
     start = time()
     fit = ae.fit(y, y, epochs=epochs, batch_size=batch, 
-                 verbose=0, validation_split=0.2, shuffle=True)
+                    verbose=0, validation_split=0.2, shuffle=True)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(yparams,traintime))
     return enc, dec, ae, fit
 
-def make_dynamic_ae(x, code_dim=1000, z_dim=20, epochs=200, batch=50, opt=Adam(1e-3)):
+def make_dynamic_ae(x, code_dim=1000, z_dim=20, epochs=100, batch=50, opt=Adam(1e-3)):
     def sample(args, mu=0.0, std=1.0):
         mean, sigma = args
         epsilon = K.random_normal(shape=(K.shape(mean)[0],z_dim), mean=mu, stddev=std)
@@ -464,45 +466,42 @@ def make_dynamic_ae(x, code_dim=1000, z_dim=20, epochs=200, batch=50, opt=Adam(1
     xparams = vae.count_params()
     start = time()
     fit = vae.fit(x, x, epochs=epochs, batch_size=batch, 
-                        verbose=0, validation_split=0.2, shuffle=True)
+                    verbose=0, validation_split=0.2, shuffle=True)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(xparams,traintime))
     return enc, dec, vae, fit
 
-### generate autoencoder predictions ########################################
 def make_ae_prediction(train_true, test_true, ae_model):
     train_pred = ae_model.predict(train_true).astype('float64')
     test_pred  = ae_model.predict(test_true).astype('float64')
-    mse_train = img_mse(train_true, train_pred)
-    mse_test  = img_mse(train_true, train_pred)
+    mse_train, mse_test = img_mse(train_true, train_pred), img_mse(train_true, train_pred)
     print('Train MSE: {:.2e} | Test MSE: {:.2e}'.format(mse_train, mse_test))
     if train_true.shape[2]>=7:
-        ssim_train = structural_similarity(train_true, train_pred, channel_axis=-1)
-        ssim_test  = structural_similarity(test_true, test_pred, channel_axis=-1)
+        ssim_train = img_ssim(train_true, train_pred, channel_axis=-1)
+        ssim_test  = img_ssim(test_true, test_pred, channel_axis=-1)
         print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     else:
         print('Image data must have shape at least (7x7) for ssim calculation')
     return train_pred, test_pred
 
-### make full train+test dataframes #########################################
 def make_full_traintest(xtrain, xtest, wtrain, wtest, ytrain, ytest):
-    xfull = np.concatenate([xtrain,xtest])
-    wfull = np.concatenate([wtrain,wtest])
-    yfull = np.concatenate([ytrain,ytest])
+    xfull = np.concatenate([xtrain, xtest])
+    wfull = np.concatenate([wtrain, wtest])
+    yfull = np.concatenate([ytrain, ytest])
     print('X_full: {} | w_full: {} | y_full: {}'.format(xfull.shape, wfull.shape, yfull.shape))
     return xfull, wfull, yfull
 
-### Make latent space regressor model #######################################
 def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec, 
-                            opt=Adam(1e-5), loss='mse', epochs=500, batch=80):
+                            opt=Adam(1e-5), loss='mse', epochs=800, batch=80):
     dynamic_enc.trainable = False
     data_enc.trainable    = False
     static_dec.trainable  = False
-    def dense_block(input, neurons):
+    def dense_block(input, neurons, drop=0.2):
         _ = Dense(neurons)(input)
-        _ = LayerNormalization()(_)
+        #_ = LayerNormalization()(_)
         _ = BatchNormalization()(_)
-        _ = PReLU()(_)
+        _ = LeakyReLU()(_)
+        _ = Dropout(drop)(_)
         return _
     x_inp = Input(shape=xf.shape[1:])
     x_latent = dynamic_enc(x_inp)[-1]
@@ -516,13 +515,30 @@ def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec,
     _ = Concatenate()([x, w])
     _ = LayerNormalization()(_)
     _ = dense_block(_, 5000)
-    _ = dense_block(_, 8*8*128)
+    _ = dense_block(_, 6*6*64)
     out = static_dec(_)
     reg = Model([x_inp, w_inp], out)
     rparams = reg.count_params()
     reg.compile(optimizer=opt, loss=loss, metrics=['mse'])
     start = time()
-    fit = reg.fit([xf, wf], yf, epochs=epochs, batch_size=batch, verbose=0, validation_split=0.2)
+    fit = reg.fit([xf, wf], yf, epochs=epochs, batch_size=batch, 
+                    verbose=0, validation_split=0.2, shuffle=True)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(rparams,traintime))
     return reg, fit
+
+def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
+    xtrain, xtest = x_tuple
+    wtrain, wtest = w_tuple
+    ytrain, ytest = y_tuple
+    inv_train = regmodel.predict([xtrain, wtrain]).astype('float64')
+    inv_test = regmodel.predict([xtest, wtest]).astype('float64')
+    mse_train, mse_test = img_mse(ytrain, inv_train), img_mse(ytest, inv_test)
+    print('Train MSE: {:.2e} | Test MSE: {:.2e}'.format(mse_train, mse_test))
+    ssim_train = img_ssim(ytrain, inv_train, channel_axis=-1)
+    ssim_test  = img_ssim(ytest, inv_test, channel_axis=-1)
+    print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
+    return inv_train, inv_test
+
+def make_inv_backnorm(data_inv, data_orig):
+    return None
