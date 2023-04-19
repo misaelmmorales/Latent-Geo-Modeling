@@ -347,7 +347,7 @@ def conv_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(inp)
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(_)
     _ = InstanceNormalization()(_)
-    _ = BatchNormalization()(_)
+    #_ = BatchNormalization()(_)
     _ = GELU()(_)
     _ = AveragePooling2D(pool)(_)
     return _
@@ -356,7 +356,7 @@ def decon_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(inp)
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(_)
     _ = InstanceNormalization()(_)
-    _ = BatchNormalization()(_)
+    #_ = BatchNormalization()(_)
     _ = GELU()(_)
     _ = UpSampling2D(pool)(_)
     return _
@@ -505,9 +505,9 @@ def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec,
     data_enc.trainable    = False
     static_dec.trainable  = False
     def dense_block(input, neurons):
-        _ = Dense(neurons)(input)
+        _ = Dense(neurons, kernel_regularizer='l1')(input)
         _ = LayerNormalization()(_)
-        _ = BatchNormalization()(_)
+        #_ = BatchNormalization()(_)
         _ = LeakyReLU()(_)
         return _
     x_inp = Input(shape=xf.shape[1:])
@@ -521,7 +521,7 @@ def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec,
     #w = dense_block(w, 1000)
     _ = Concatenate()([x_latent, w_latent])
     _ = LayerNormalization()(_)
-    _ = dense_block(_, 2000)
+    #_ = dense_block(_, 2000)
     _ = Dense(6*6*64)(_)
     out = static_dec(_)
     reg = Model([x_inp, w_inp], out)
@@ -549,18 +549,17 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
 
 def make_inv_backnorm(data_inv, data_orig, idxs):
     inv_train, inv_test = data_inv
+    facies0, poro0, perm0 = data_orig
+    data0 = np.concatenate([np.expand_dims(facies0,-1), np.expand_dims(poro0,-1), np.expand_dims(perm0,-1)], -1)
     n_train, n_test = int(inv_train.shape[0]/z_depth), int(inv_test.shape[0]/z_depth)
     inv_tr0 = inv_train.reshape(n_train,z_depth,xy_dim,xy_dim,static_channels)
     inv_te0 = inv_test.reshape(n_test,z_depth,xy_dim,xy_dim,static_channels)
     new_pred = np.moveaxis(np.concatenate([inv_tr0,inv_te0]),1,-2)
-    new_true = np.take(data_orig, np.concatenate([idxs[0],idxs[1]]), axis=0)
-
+    new_true = np.take(data0, np.concatenate([idxs[0],idxs[1]]), axis=0)
     facies_scaler = my_normalize(new_true[...,0], mode='forward', feature='static')[1]
     poro_scaler   = my_normalize(new_true[...,1], mode='forward', feature='static')[1]
     perm_scaler   = my_normalize(new_true[...,2], mode='forward', feature='static')[1]
-
-    facies_hat = my_normalize(new_pred[...,0], scaler=facies_scaler, mode='inverse')
-    poro_hat   = my_normalize(new_pred[...,1], scaler=poro_scaler, mode='inverse')
-    perm_hat   = my_normalize(new_pred[...,2], scaler=perm_scaler, mode='inverse')
-
+    facies_hat = my_normalize(new_pred[...,0], scaler=facies_scaler, mode='inverse', data_orig=new_true[...,0])
+    poro_hat   = my_normalize(new_pred[...,1], scaler=poro_scaler, mode='inverse', data_orig=new_true[...,1])
+    perm_hat   = my_normalize(new_pred[...,2], scaler=perm_scaler, mode='inverse', data_orig=new_true[...,2])
     return facies_hat, poro_hat, perm_hat
