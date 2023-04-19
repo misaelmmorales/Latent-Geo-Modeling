@@ -21,7 +21,7 @@ from tensorflow_addons.layers import InstanceNormalization, GELU
 from keras.layers import BatchNormalization, LayerNormalization, PReLU
 from keras.layers import Conv3D, AveragePooling3D, UpSampling3D, LeakyReLU
 from keras.layers import Flatten, Reshape, Concatenate, Lambda
-from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense
+from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense, Dropout
 from keras.optimizers import Adam
 from keras.losses import mean_squared_error as loss_mse
 ################################################################################################
@@ -209,19 +209,21 @@ def plot_dynamic(static, dynamic, nrows=5, multiplier=1, windowsize=(1500,800), 
             p.add_title('step {}'.format(times[j]+1), font_size=8)
     p.show(jupyter_backend='satic', window_size=windowsize)
 
-def plot_X_observation(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
+def plot_X_observations(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
     fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
+    n_samples, n_obs = int(data.shape[0]/8), int(data.shape[-2])
+    df = data.reshape(n_samples, 8, n_timesteps, n_obs, 2)
     for i in range(ncols):
         k = i*multiplier
-        axs[0,i].imshow(data[k,:,:,0].T, cmap=cmaps[0])
-        axs[1,i].imshow(data[k,:,:,1].T, cmap=cmaps[1])
+        axs[0,i].imshow(df[k,0,:,:,0].T, cmap=cmaps[0])
+        axs[1,i].imshow(df[k,0,:,:,1].T, cmap=cmaps[1])
         axs[0,i].set(title='Realization {}'.format(k))
     axs[0,i].set_ylabel('Pressure', labelpad=-110, rotation=270)
     axs[1,i].set_ylabel('Saturation', labelpad=-110, rotation=270)
     fig.text(0.5, 0.01, 'Timesteps', ha='center')
     fig.text(0.1, 0.5, 'Location Index', va='center', rotation='vertical')
 
-def plot_X_line_observation(data, times, ncols=10, multiplier=1, figsize=(20,5)):
+def plot_X_line_observations(data, times, ncols=10, multiplier=1, figsize=(20,5)):
     fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
     for i in range(ncols):
         k = i*multiplier
@@ -234,7 +236,7 @@ def plot_X_line_observation(data, times, ncols=10, multiplier=1, figsize=(20,5))
     axs[1,0].set_ylabel('Saturation')
     fig.text(0.5, 0.04, 'Time [years]', ha='center')
 
-def plot_X_img_observation(data, randx, randy, timing=-1, multiplier=1, ncols=10, figsize=(20,4), cmaps=['gnuplot2', 'jet']):
+def plot_X_img_observations(data, randx, randy, timing=-1, multiplier=1, ncols=10, figsize=(20,4), cmaps=['gnuplot2', 'jet']):
     fig, axs = plt.subplots(2, ncols, figsize=figsize)
     for i in range(ncols):
         k = i*multiplier
@@ -266,6 +268,77 @@ def plot_loss_all(loss1, loss2, loss3, title1='Data', title2='Static', title3='D
     plt.subplot(131); plot_loss(loss1, title=title1)
     plt.subplot(132); plot_loss(loss2, title=title2)
     plt.subplot(133); plot_loss(loss3, title=title3)
+
+def plot_data_results(timestamps, true, pred, ncols=10, multiplier=1, figsize=(20,8), suptitle='___'):
+    colors = ['tab:blue','tab:orange','tab:green','tab:red','tab:purple','tab:brown','tab:pink','tab:olive','tab:cyan']
+    labels = ['BHP [psia]', 'Oil Rate [stb/d]', 'Water Rate [stb/d]', 'Water Cut [%]']
+    fig, axs = plt.subplots(4, ncols, figsize=figsize, facecolor='white')
+    n_samples = int(true.shape[0]/8)
+    truth, hat = true.reshape(n_samples,8,len(timestamps),9,4), pred.reshape(n_samples,8,len(timestamps),9,4)
+    for i in range(4):
+        for j in range(ncols):
+            for k in range(5):
+                axs[i,j].plot(timestamps, truth[j*multiplier,0,:,k,i], label='I{} true'.format(k+1), c=colors[k], linestyle='-')
+                axs[i,j].plot(timestamps, hat[j*multiplier,0,:,k,i],   label='I{} pred'.format(k+1), c=colors[k], linestyle='--')
+            for m in range(5,9):
+                axs[i,j].plot(timestamps, truth[j*multiplier,0,:,m,i], label='P{} true'.format(m-4), c=colors[m], linestyle='-')
+                axs[i,j].plot(timestamps, hat[j*multiplier,0,:,m,i],   label='P{} pred'.format(m-4), c=colors[m], linestyle='--')
+            axs[0,j].set(title='Realization {}'.format(j*multiplier))
+        axs[i,0].set(ylabel=labels[i])
+    for j in range(1,ncols):
+        for i in range(4):
+            axs[i,j].set(yticks=[])
+    for i in range(3):
+        for j in range(ncols):
+            axs[i,j].set(xticks=[])
+    fig.text(0.5, 0.04, 'Time [years]', ha='center')
+    plt.suptitle(suptitle + ' Observations')
+    plt.legend(bbox_to_anchor=(2, 4))
+
+def plot_static_results(true, pred, channel_select=0, ncols=10, multiplier=1, cmaps=['jet','seismic'], windowsize=(1500,800)):
+    n_samples = int(true.shape[0]/8)
+    truth = np.moveaxis(true.reshape(n_samples,8,xy_dim,xy_dim,3), 1, -2)
+    hat   = np.moveaxis(pred.reshape(n_samples,8,xy_dim,xy_dim,3), 1, -2)
+    labels = ['True', 'Prediction', 'Difference']
+    fcmap  = [cmaps[0], cmaps[0], cmaps[1]]
+    p = pv.Plotter(shape=(3,ncols))
+    for j in range(ncols):
+        true_vol = np.flip(truth[j*multiplier,:,:,:,channel_select])
+        pred_vol = np.flip(hat[j*multiplier,:,:,:,channel_select])
+        diff_vol = true_vol - pred_vol
+        vols = [true_vol, pred_vol, diff_vol]
+        for i in range(3):
+            cb_args = {'title':labels[i], 'n_labels':3, 'fmt':'%.1f', 
+                        'title_font_size':15, 'label_font_size':8}
+            p.subplot(i,j); p.add_mesh(vols[i], cmap=fcmap[i], scalar_bar_args=cb_args)
+            p.subplot(0,j); p.add_title('Realization {}'.format(j*multiplier), font_size=6)
+    p.show(jupyter_backend='static', window_size=windowsize)
+
+def plot_dynamic_results(true, pred, channel_select=0, ncols=10, multiplier=1, figsize=(20,4.5), suptitle='___'):
+    fig, axs = plt.subplots(3, ncols, figsize=figsize, sharex=True, sharey=True)
+    n_samples, n_obs = int(true.shape[0]/8), int(true.shape[-2])
+    df_true, df_pred = true.reshape(n_samples,8,n_timesteps,n_obs,2), pred.reshape(n_samples,8,n_timesteps,n_obs,2)
+    if channel_select==0:
+        supertitle, fcmap = 'Pressure', 'turbo'
+    elif channel_select==1:
+        supertitle, fcmap = 'Saturation', 'jet'
+    else:
+        print('Select dynamic channel [0=Pressure, 1=Saturation]')
+        return None
+    fcmap, labels = [fcmap,fcmap,'seismic'], ['True','Prediction','Difference']
+    for i in range(3):
+        for j in range(ncols):
+            k = j*multiplier
+            real = df_true[k,0,:,:,channel_select].T
+            hat  = df_pred[k,0,:,:,channel_select].T
+            diff = real - hat
+            imgs = [real, hat, diff]
+            axs[0,j].set(title='Realization {}'.format(k))
+            im = axs[i,j].imshow(imgs[i], cmap=fcmap[i])
+        plt.colorbar(im, fraction=0.046, pad=0.04)
+        axs[i,0].set(ylabel=labels[i])
+    plt.suptitle(suptitle + ' ' + supertitle)
+    fig.text(0.5, 0.01, 'Timestep [years]', ha='center')
 
 ################################################################################################
 def conv_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
@@ -359,18 +432,24 @@ def make_dynamic_ae(x, code_dim=1000, z_dim=20, epochs=200, batch=50, opt=Adam(1
         mean, sigma = args
         epsilon = K.random_normal(shape=(K.shape(mean)[0],z_dim), mean=mu, stddev=std)
         return mean + K.exp(sigma)*epsilon
+    def dense_block(inp, units, drop=0.2):
+        _ = Dense(units)(inp)
+        _ = BatchNormalization()(_)
+        _ = PReLU()(_)
+        _ = Dropout(drop)(_)
+        return _
     inputs = Input(shape=x.shape[1:])
     shape_b4 = K.int_shape(inputs)[1:]
     _ = Flatten()(inputs)
-    _ = Dense(code_dim, activation=PReLU())(_)
+    _ = dense_block(_, code_dim)
     code = _
-    _ = Dense(100, activation=PReLU())(_)
+    _ = dense_block(_, 100)
     mean = Dense(z_dim)(_)
     sigma = Dense(z_dim)(_)
     latent = Lambda(sample)([mean, sigma])
     z_inp = Input(shape=(z_dim,))
-    _ = Dense(100, activation=PReLU())(z_inp)
-    _ = Dense(code_dim, activation=PReLU())(_)
+    _ = dense_block(z_inp, 100)
+    _ = dense_block(_, code_dim)
     _ = Dense(np.prod(shape_b4), activation='sigmoid')(_)
     out = Reshape(shape_b4)(_)
     enc = Model(inputs, [mean,sigma,latent,code], name='dynamic_encoder')
