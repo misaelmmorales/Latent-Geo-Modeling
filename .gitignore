@@ -1,0 +1,8 @@
+
+simulations_2D/data/channels.npy
+simulations_2D/data/perm.npy
+simulations_2D/data/poro.npy
+simulations_2D/data/pressure.npy
+simulations_2D/data/saturation.npy
+simulations_2D/data/X_data.npy
+simulations_2D/data/y_data.npy
