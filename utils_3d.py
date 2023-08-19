@@ -89,34 +89,34 @@ def make_initial_data(n_realizations=n_realizations, save=True):
     prod = np.zeros((n_realizations,n_timesteps,9,4))
     for i in range(n_realizations):
         k = i+1
-        satu[i] = np.moveaxis(loadmat('E:/Latent_Geo_Inversion/simulations_3D/saturation/saturation_{}.mat'.format(k))['satu'].reshape(n_timesteps,z_depth,xy_dim,xy_dim).T, -1, 0)
-        pres[i] = np.moveaxis(loadmat('E:/Latent_Geo_Inversion/simulations_3D/pressure/pressure_{}.mat'.format(k))['pres'].reshape(n_timesteps,z_depth,xy_dim,xy_dim).T, -1, 0)/10
-        poro[i] = loadmat('E:/Latent_Geo_Inversion/simulations_3D/porosity/porosity_{}.mat'.format(k))['porosity'].reshape(z_depth,xy_dim,xy_dim).T
-        perm[i] = loadmat('E:/Latent_Geo_Inversion/simulations_3D/permeability/permeability_{}.mat'.format(k))['perm_md'].reshape(z_depth,xy_dim,xy_dim).T
-        prod[i] = loadmat('E:/Latent_Geo_Inversion/simulations_3D/production/production_{}'.format(k))['production']
+        satu[i] = np.moveaxis(loadmat('E:/Latent-Geo-Inversion/simulations_3D/saturation/saturation_{}.mat'.format(k))['satu'].reshape(n_timesteps,z_depth,xy_dim,xy_dim).T, -1, 0)
+        pres[i] = np.moveaxis(loadmat('E:/Latent-Geo-Inversion/simulations_3D/pressure/pressure_{}.mat'.format(k))['pres'].reshape(n_timesteps,z_depth,xy_dim,xy_dim).T, -1, 0)/10
+        poro[i] = loadmat('E:/Latent-Geo-Inversion/simulations_3D/porosity/porosity_{}.mat'.format(k))['porosity'].reshape(z_depth,xy_dim,xy_dim).T
+        perm[i] = loadmat('E:/Latent-Geo-Inversion/simulations_3D/permeability/permeability_{}.mat'.format(k))['perm_md'].reshape(z_depth,xy_dim,xy_dim).T
+        prod[i] = loadmat('E:/Latent-Geo-Inversion/simulations_3D/production/production_{}'.format(k))['production']
     prod[:,:,:,0] /= 75
     facies = np.load('simulations 3D/facies_maps_48_48_8.npy')
     timestamps = loadmat('simulations 3D/timestamp_yr.mat')['timestamps_yr'].squeeze()
     print('Pres: {} | Satu: {}\nPoro: {} | Perm: {} | Facies: {}'.format(pres.shape, satu.shape, poro.shape, perm.shape, facies.shape))
     print('Timestamps: {} | Production: {}'.format(timestamps.shape, prod.shape))
     if save:
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/saturation.npy', satu)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/pressure.npy', pres)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/porosity.npy', poro)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/permeability.npy', perm)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/facies.npy', facies)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/production.npy', prod)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/timestamps.npy', timestamps)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/saturation.npy', satu)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/pressure.npy', pres)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/porosity.npy', poro)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/permeability.npy', perm)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/facies.npy', facies)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/production.npy', prod)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/timestamps.npy', timestamps)
     return satu, pres, poro, perm, facies, prod, timestamps
 
 def load_initial_data():
-    satu = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/saturation.npy')
-    pres = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/pressure.npy')
-    poro = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/porosity.npy')
-    perm = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/permeability.npy')
-    facies = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/facies.npy')
-    prod = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/production.npy')
-    timestamps = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/timestamps.npy')
+    satu = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/saturation.npy')
+    pres = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/pressure.npy')
+    poro = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/porosity.npy')
+    perm = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/permeability.npy')
+    facies = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/facies.npy')
+    prod = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/production.npy')
+    timestamps = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/timestamps.npy')
     print('Pres: {} | Satu: {}\nPoro: {} | Perm: {} | Facies: {}'.format(pres.shape, satu.shape, poro.shape, perm.shape, facies.shape))
     print('Timestamps: {} | Production: {}'.format(timestamps.shape, prod.shape))
     return satu, pres, poro, perm, facies, prod, timestamps
@@ -131,18 +131,18 @@ def split_xywt(facies, poro, perm, pres, satu, prod, timestamps, save=False):
     X_data[...,1] = satu
     w_data = my_normalize(prod, feature='data')
     if save:
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/X_data.npy', X_data)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/y_data.npy', y_data)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/w_data.npy', w_data)
-        np.save('E:/Latent_Geo_Inversion/simulations_3D/data/t_data.npy', timestamps)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/X_data.npy', X_data)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/y_data.npy', y_data)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/w_data.npy', w_data)
+        np.save('E:/Latent-Geo-Inversion/simulations_3D/data/t_data.npy', timestamps)
     print('X shape: {} | y shape: {} | w shape: {}\nt shape: {}'.format(X_data.shape, y_data.shape, prod.shape, timestamps.shape))
     return X_data, y_data, w_data, timestamps
 
 def load_xywt():
-    x = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/X_data.npy')
-    y = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/y_data.npy')
-    w = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/w_data.npy')
-    t = np.load('E:/Latent_Geo_Inversion/simulations_3D/data/t_data.npy')
+    x = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/X_data.npy')
+    y = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/y_data.npy')
+    w = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/w_data.npy')
+    t = np.load('E:/Latent-Geo-Inversion/simulations_3D/data/t_data.npy')
     print('X shape: {} | y shape: {} | w shape: {}\nt shape: {}'.format(x.shape, y.shape, w.shape, t.shape))
     return x, y, w, t
 
@@ -484,8 +484,8 @@ def make_ae_prediction(train_true, test_true, ae_model):
     mse_train, mse_test = img_mse(train_true, train_pred), img_mse(train_true, train_pred)
     print('Train MSE: {:.2e} | Test MSE: {:.2e}'.format(mse_train, mse_test))
     if train_true.shape[2]>=7:
-        ssim_train = img_ssim(train_true, train_pred, channel_axis=-1)
-        ssim_test  = img_ssim(test_true, test_pred, channel_axis=-1)
+        ssim_train = img_ssim(train_true, train_pred, channel_axis=-1, data_range=1.0)
+        ssim_test  = img_ssim(test_true, test_pred, channel_axis=-1, data_range=1.0)
         print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     else:
         print('Image data must have shape at least (7x7) for ssim calculation')
@@ -549,8 +549,8 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     inv_test = regmodel.predict([xtest, wtest]).astype('float64')
     mse_train, mse_test = img_mse(ytrain, inv_train), img_mse(ytest, inv_test)
     print('Train MSE: {:.2e} | Test MSE: {:.2e}'.format(mse_train, mse_test))
-    ssim_train = img_ssim(ytrain, inv_train, channel_axis=-1)
-    ssim_test  = img_ssim(ytest, inv_test, channel_axis=-1)
+    ssim_train = img_ssim(ytrain, inv_train, channel_axis=-1, data_range=1.0)
+    ssim_test  = img_ssim(ytest, inv_test, channel_axis=-1, data_range=1.0)
     print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     return inv_train, inv_test
 
