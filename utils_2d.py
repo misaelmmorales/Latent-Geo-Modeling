@@ -14,6 +14,7 @@ from time import time
 from skimage.metrics import mean_squared_error as img_mse
 from skimage.metrics import structural_similarity
 
+import keras
 import keras.backend as K
 from keras import Model, Input
 from tensorflow_addons.layers import InstanceNormalization, GELU
@@ -55,38 +56,38 @@ def make_initial_data():
     poro       = np.zeros(shape=(n_realizations, xy_dim, xy_dim))
     pressure   = np.zeros(shape=(n_realizations, n_timesteps, xy_dim, xy_dim))
     saturation = np.zeros(shape=(n_realizations, n_timesteps, xy_dim, xy_dim))
-    timestamps = loadmat('simulations 2D/response_production/production_1.mat')['Prod']['t'][0][0].flatten()[1:]*3.1689E-8
-    channels = np.transpose(np.array(pd.read_csv('simulations 2D/channel_all.csv', header=None)).T.reshape(n_realizations, xy_dim,xy_dim), axes=(0,2,1))
+    timestamps = loadmat('simulations_2D/response_production/production_1.mat')['Prod']['t'][0][0].flatten()[1:]*3.1689E-8
+    channels = np.transpose(np.array(pd.read_csv('simulations_2D/channel_all.csv', header=None)).T.reshape(n_realizations, xy_dim,xy_dim), axes=(0,2,1))
     for i in range(n_realizations):
-        well_opr[i] = loadmat('simulations 2D/response_production/production_{}.mat'.format(i+1))['Prod']['opr'][0][0][1:, 3:]*5.4344E5 #to bbls
-        well_wpr[i] = loadmat('simulations 2D/response_production/production_{}.mat'.format(i+1))['Prod']['wpr'][0][0][1:, 3:]*5.4344E5 #to bbls
-        well_wcut[i] = loadmat('simulations 2D/response_production/production_{}.mat'.format(i+1))['Prod']['wc'][0][0][1:, 3:]
+        well_opr[i] = loadmat('simulations_2D/response_production/production_{}.mat'.format(i+1))['Prod']['opr'][0][0][1:, 3:]*5.4344E5 #to bbls
+        well_wpr[i] = loadmat('simulations_2D/response_production/production_{}.mat'.format(i+1))['Prod']['wpr'][0][0][1:, 3:]*5.4344E5 #to bbls
+        well_wcut[i] = loadmat('simulations_2D/response_production/production_{}.mat'.format(i+1))['Prod']['wc'][0][0][1:, 3:]
     for i in range(n_realizations):
-        poro[i,:,:] = loadmat('simulations 2D/features_porosity/porosity_{}.mat'.format(i+1))['poro'].flatten().reshape(xy_dim,xy_dim)
-        perm[i,:,:] = np.log10(loadmat('simulations 2D/features_permeability/permeability_{}.mat'.format(i+1))['permeability']).flatten().reshape(xy_dim,xy_dim)
-        pressure[i,:,:,:]   = loadmat('simulations 2D/response_pressure/pressure_{}.mat'.format(i+1))['pres'].T.reshape(n_timesteps,xy_dim,xy_dim)**0.00689476 #to psi
-        saturation[i,:,:,:] = loadmat('simulations 2D/response_saturation/saturation_{}.mat'.format(i+1))['satu'].T.reshape(n_timesteps,xy_dim,xy_dim)
-    np.save('simulations 2D/data/well_opr.npy', well_opr)
-    np.save('simulations 2D/data/well_wpr.npy', well_wpr)
-    np.save('simulations 2D/data/well_wcut.npy', well_wcut)
-    np.save('simulations 2D/data/poro.npy', poro)
-    np.save('simulations 2D/data/perm.npy', perm)
-    np.save('simulations 2D/data/channels.npy', channels)
-    np.save('simulations 2D/data/pressure.npy', pressure)
-    np.save('simulations 2D/data/saturation.npy', saturation)
-    np.save('simulations 2D/data/timestamps.npy', timestamps)
+        poro[i,:,:] = loadmat('simulations_2D/features_porosity/porosity_{}.mat'.format(i+1))['poro'].flatten().reshape(xy_dim,xy_dim)
+        perm[i,:,:] = np.log10(loadmat('simulations_2D/features_permeability/permeability_{}.mat'.format(i+1))['permeability']).flatten().reshape(xy_dim,xy_dim)
+        pressure[i,:,:,:]   = loadmat('simulations_2D/response_pressure/pressure_{}.mat'.format(i+1))['pres'].T.reshape(n_timesteps,xy_dim,xy_dim)**0.00689476 #to psi
+        saturation[i,:,:,:] = loadmat('simulations_2D/response_saturation/saturation_{}.mat'.format(i+1))['satu'].T.reshape(n_timesteps,xy_dim,xy_dim)
+    np.save('simulations_2D/data/well_opr.npy', well_opr)
+    np.save('simulations_2D/data/well_wpr.npy', well_wpr)
+    np.save('simulations_2D/data/well_wcut.npy', well_wcut)
+    np.save('simulations_2D/data/poro.npy', poro)
+    np.save('simulations_2D/data/perm.npy', perm)
+    np.save('simulations_2D/data/channels.npy', channels)
+    np.save('simulations_2D/data/pressure.npy', pressure)
+    np.save('simulations_2D/data/saturation.npy', saturation)
+    np.save('simulations_2D/data/timestamps.npy', timestamps)
     return timestamps, poro, perm, channels, pressure, saturation, well_opr, well_wpr, well_wcut
 
 def load_initial_data():
-    timestamps = np.load('simulations 2D/data/timestamps.npy')
-    poro       = np.load('simulations 2D/data/poro.npy')
-    perm       = np.load('simulations 2D/data/perm.npy')
-    channels   = np.load('simulations 2D/data/channels.npy')
-    pressure   = np.load('simulations 2D/data/pressure.npy')
-    saturation = np.load('simulations 2D/data/saturation.npy')
-    well_opr   = np.load('simulations 2D/data/well_opr.npy')
-    well_wpr   = np.load('simulations 2D/data/well_wpr.npy')
-    well_wcut  = np.load('simulations 2D/data/well_wcut.npy')
+    timestamps = np.load('simulations_2D/data/timestamps.npy')
+    poro       = np.load('simulations_2D/data/poro.npy')
+    perm       = np.load('simulations_2D/data/perm.npy')
+    channels   = np.load('simulations_2D/data/channels.npy')
+    pressure   = np.load('simulations_2D/data/pressure.npy')
+    saturation = np.load('simulations_2D/data/saturation.npy')
+    well_opr   = np.load('simulations_2D/data/well_opr.npy')
+    well_wpr   = np.load('simulations_2D/data/well_wpr.npy')
+    well_wcut  = np.load('simulations_2D/data/well_wcut.npy')
     print('Perm: {} | Poro: {} | Channels: {} | Pressure: {} | Saturation: {}'.format(perm.shape, poro.shape, channels.shape, pressure.shape, saturation.shape))
     print('OPR: {} | WPR: {} | WCUT: {} | Timestamps: {}'.format(well_opr.shape, well_wpr.shape, well_wcut.shape, timestamps.shape))
     return timestamps, poro, perm, channels, pressure, saturation, well_opr, well_wpr, well_wcut
@@ -105,10 +106,10 @@ def split_xyw(poro, perm, channels, pressure, saturation, well_opr, well_wpr, we
     return X_data, y_data, w_data
 
 def load_xywt():
-    x = np.load('simulations 2D/data/X_data.npy')
-    y = np.load('simulations 2D/data/y_data.npy')
-    w = np.load('simulations 2D/data/w_data.npy')
-    t = np.load('simulations 2D/data/timestamps.npy')
+    x = np.load('simulations_2D/data/X_data.npy')
+    y = np.load('simulations_2D/data/y_data.npy')
+    w = np.load('simulations_2D/data/w_data.npy')
+    t = np.load('simulations_2D/data/timestamps.npy')
     print('X shape: {} | w shape: {} \ny shape: {} | t shape: {}'.format(x.shape, w.shape, y.shape, t.shape))
     return x, y, w, t
 
@@ -464,8 +465,8 @@ def make_ae_prediction(train_true, test_true, ae_model):
     mse_test  = img_mse(train_true, train_pred)
     print('Train MSE: {:.2e} | Test MSE: {:.2e}'.format(mse_train, mse_test))
     if train_true.shape[2]>=7:
-        ssim_train = structural_similarity(train_true, train_pred, channel_axis=-1)
-        ssim_test  = structural_similarity(test_true, test_pred, channel_axis=-1)
+        ssim_train = structural_similarity(train_true, train_pred, channel_axis=-1, data_range=1.0)
+        ssim_test  = structural_similarity(test_true, test_pred, channel_axis=-1, data_range=1.0)
         print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     else:
         print('Image data must have shape at least (7x7) for ssim calculation')
@@ -520,7 +521,7 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     inv_test = regmodel.predict([xtest, wtest]).astype('float64')
     mse_train, mse_test = img_mse(ytrain, inv_train), img_mse(ytest, inv_test)
     print('Train MSE: {:.2e} | Test MSE: {:.2e}'.format(mse_train, mse_test))
-    ssim_train = structural_similarity(ytrain, inv_train, channel_axis=-1)
-    ssim_test  = structural_similarity(ytest, inv_test, channel_axis=-1)
+    ssim_train = structural_similarity(ytrain, inv_train, channel_axis=-1, data_range=1.0)
+    ssim_test  = structural_similarity(ytest, inv_test, channel_axis=-1, data_range=1.0)
     print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     return inv_train, inv_test
