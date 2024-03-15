@@ -7,10 +7,12 @@ import tensorflow as tf
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from matplotlib.gridspec import GridSpec
 
 from scipy.io import loadmat
 from time import time
 
+from sklearn.metrics import mean_squared_error
 from skimage.metrics import mean_squared_error as img_mse
 from skimage.metrics import structural_similarity
 
@@ -18,7 +20,7 @@ import keras
 import keras.backend as K
 from keras import Model, Input
 from tensorflow_addons.layers import InstanceNormalization, GELU
-from keras.layers import BatchNormalization, LayerNormalization, PReLU
+from keras.layers import BatchNormalization, LayerNormalization, Dropout, PReLU
 from keras.layers import Flatten, Reshape, Concatenate, Lambda
 from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense
 from keras.optimizers import Adam
@@ -525,3 +527,50 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     ssim_test  = structural_similarity(ytest, inv_test, channel_axis=-1, data_range=1.0)
     print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     return inv_train, inv_test
+
+def make_fwd_regressor(xf, wf, yf, dynamic_dec, data_dec, static_enc, 
+                       drop=0.2, opt=Adam(1e-3), loss='mse', epochs=500, batch=70):
+    dynamic_dec.trainable = False
+    data_dec.trainable = False
+    static_enc.trainable = False
+    def dense_block(input, neurons):
+        _ = Dense(neurons, activity_regularizer='l2')(input)
+        _ = LayerNormalization()(_)
+        _ = BatchNormalization()(_)
+        _ = Dropout(drop)(_)
+        _ = PReLU()(_)
+        return _
+    y_inp = Input(shape=(yf.shape[1:]))
+    y_latent = static_enc(y_inp)
+    y_x = dense_block(y_latent, 100)
+    y_x = dense_block(y_x, 10)
+    x_out = dynamic_dec(y_x)
+    y_w = dense_block(y_latent, 100)
+    y_w = dense_block(y_w, 10)
+    w_out = data_dec(y_w)
+    fwd = Model(y_inp, [x_out, w_out])
+    rparams = fwd.count_params()
+    fwd.compile(optimizer=opt, loss=loss, metrics=['mse'])
+    start = time()
+    fit = fwd.fit(yf, [xf, wf], epochs=epochs, batch_size=batch, verbose=0, validation_split=0.2)
+    traintime = (time()-start)/60
+    print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(rparams, traintime))
+    return fwd, fit
+
+def make_fwd_prediction(fwdmodel, x_tuple, w_tuple, y_tuple):
+    xtrain, xtest = x_tuple
+    wtrain, wtest = w_tuple
+    ytrain, ytest = y_tuple
+    fwd_train = fwdmodel.predict(ytrain)
+    fwd_test = fwdmodel.predict(ytest)
+    fwd_x_train, fwd_w_train = fwd_train
+    fwd_x_test,  fwd_w_test  = fwd_test
+    mse_x_train = img_mse(xtrain, fwd_x_train)
+    mse_x_test  = img_mse(xtest,  fwd_x_test)
+    mse_w_train = img_mse(wtrain, fwd_w_train)
+    mse_w_test  = img_mse(wtest,  fwd_w_test)
+    print('X - MSE: Train {:.2e} | Test: {:.2e}'.format(mse_x_train, mse_x_test))
+    print('w - MSE: Train {:.2e} | Test: {:.2e}'.format(mse_w_train, mse_w_test))
+    fwd_X = {'train': fwd_x_train, 'test': fwd_x_test}
+    fwd_W = {'train': fwd_w_train, 'test': fwd_w_test}
+    return fwd_X, fwd_W
