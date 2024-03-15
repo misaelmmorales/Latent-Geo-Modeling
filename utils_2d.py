@@ -529,7 +529,7 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     return inv_train, inv_test
 
 def make_fwd_regressor(xf, wf, yf, dynamic_dec, data_dec, static_enc, 
-                       drop=0.2, opt=Adam(1e-3), loss='mse', epochs=500, batch=70):
+                       drop=0.1, opt=Adam(1e-3), loss='mse', epochs=500, batch=70):
     dynamic_dec.trainable = False
     data_dec.trainable = False
     static_enc.trainable = False
@@ -542,10 +542,10 @@ def make_fwd_regressor(xf, wf, yf, dynamic_dec, data_dec, static_enc,
         return _
     y_inp = Input(shape=(yf.shape[1:]))
     y_latent = static_enc(y_inp)
-    y_x = dense_block(y_latent, 100)
+    y_x = dense_block(y_latent, 128)
     y_x = dense_block(y_x, 10)
     x_out = dynamic_dec(y_x)
-    y_w = dense_block(y_latent, 100)
+    y_w = dense_block(y_latent, 128)
     y_w = dense_block(y_w, 10)
     w_out = data_dec(y_w)
     fwd = Model(y_inp, [x_out, w_out])
@@ -574,3 +574,7 @@ def make_fwd_prediction(fwdmodel, x_tuple, w_tuple, y_tuple):
     fwd_X = {'train': fwd_x_train, 'test': fwd_x_test}
     fwd_W = {'train': fwd_w_train, 'test': fwd_w_test}
     return fwd_X, fwd_W
+
+################################################################################################
+############################################# END ##############################################
+################################################################################################
