@@ -192,10 +192,10 @@ def plot_static(poro, perm, channels, multiplier=1, ncols=10, inv_flag:bool=Fals
             axs[j,i].set(xticks=[], yticks=[])
             axs[j,0].set(ylabel=labels[j])
     plt.tight_layout()
-    if inv_flag is None:
-        plt.savefig('{}/simulated_geomodels-plot_static.png'.format(savefolder)) if savefig else None
-    else:
+    if inv_flag:
         plt.savefig('{}/inverted_geomodels-plot_static.png'.format(savefolder)) if savefig else None
+    else:
+        plt.savefig('{}/simulated_geomodels-plot_static.png'.format(savefolder)) if savefig else None
     plt.show()
     return None
 
@@ -274,11 +274,11 @@ def plot_X_img_observation(data, randx, randy, timing=-1, multiplier=1, ncols=10
         axs[0,i].scatter(randx, randy, marker='s', c='k')
         axs[1,i].imshow(data[k,timing,:,:,1], cmap=cmaps[1])
         axs[1,i].scatter(randx, randy, marker='s', c='k')
-        axs[0,i].set(title='Realization {}'.format(k))
+        axs[0,i].set_title('Realization {}'.format(k), weight='bold')
         for j in range(2):
             axs[j,i].set(xticks=[], yticks=[])
-    axs[0,0].set(ylabel='Pressure')
-    axs[1,0].set(ylabel='Saturation')
+    axs[0,0].set_ylabel('Pressure', weight='bold')
+    axs[1,0].set_ylabel('Saturation', weight='bold')
     plt.tight_layout()
     plt.savefig('{}/X_img_obersevations.png'.format(savefolder)) if savefig else None
     plt.show()
@@ -286,15 +286,15 @@ def plot_X_img_observation(data, randx, randy, timing=-1, multiplier=1, ncols=10
 
 def plot_X_observation(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
     fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
-    for i in range(ncols):
+    for i in range(ncols): 
         k = i*multiplier
         axs[0,i].imshow(data[k,:,:,0].T, cmap=cmaps[0])
         axs[1,i].imshow(data[k,:,:,1].T, cmap=cmaps[1])
-        axs[0,i].set(title='Realization {}'.format(k))
-    axs[0,i].set_ylabel('Pressure', labelpad=-110, rotation=270)
-    axs[1,i].set_ylabel('Saturation', labelpad=-110, rotation=270)
-    fig.text(0.5, 0.01, 'Timesteps', ha='center')
-    fig.text(0.1, 0.5, 'Location Index', va='center', rotation='vertical')
+        axs[0,i].set_title('Realization {}'.format(k), weight='bold')
+    axs[0,i].set_ylabel('Pressure', labelpad=-133, rotation=270, weight='bold')
+    axs[1,i].set_ylabel('Saturation', labelpad=-133, rotation=270, weight='bold')
+    fig.text(0.5, 0, 'Timesteps', ha='center', weight='bold')
+    fig.text(0, 0.5, 'Location Index', va='center', rotation='vertical', weight='bold')
     plt.tight_layout()
     plt.savefig('{}/X_obersevations.png'.format(savefolder)) if savefig else None
     plt.show()
@@ -306,12 +306,12 @@ def plot_X_line_observation(data, times, ncols=10, multiplier=1, figsize=(20,5))
         k = i*multiplier
         axs[0,i].plot(times, data[k,:,:,0])
         axs[1,i].plot(times, data[k,:,:,1])
-        axs[0,i].set(title='Realization {}'.format(k))
+        axs[0,i].set_title('Realization {}'.format(k), weight='bold')
         for j in range(2):
             axs[j,i].set(ylim=[-0.05,1.05])
-    axs[0,0].set_ylabel('Pressure')
-    axs[1,0].set_ylabel('Saturation')
-    fig.text(0.5, 0.04, 'Time [years]', ha='center')
+    axs[0,0].set_ylabel('Pressure', weight='bold')
+    axs[1,0].set_ylabel('Saturation', weight='bold')
+    fig.text(0.5, 0, 'Time [years]', ha='center', weight='bold')
     plt.tight_layout()
     plt.savefig('{}/X_line_obersevations.png'.format(savefolder)) if savefig else None
     plt.show()
