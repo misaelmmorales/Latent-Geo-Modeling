@@ -629,7 +629,7 @@ def plot_fwd_latent_dashboard(wtrue, ytrue, fwdX, fwdw,
     ax11.set_title('$m$', weight='bold')
     for i in range(3):
         for j in range(3):
-            ax2[j].plot(wtrue[realization,:,i,j], color=colors[i], label=wnames[j])
+            ax2[j].plot(wtrue[realization,:,i,j], color=colors[i], label=wnames[i])
             ax2[j].plot(fwdw[realization,:,i,j], color=colors[i], linestyle='--')
         ax2[j].legend(loc='lower right')
         ax2[i].grid(True, which='both')
