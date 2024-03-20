@@ -13,17 +13,19 @@ from time import time
 from scipy.io import loadmat
 from scipy.interpolate import griddata
 
+from sklearn.metrics import r2_score, mean_squared_error
 from skimage.metrics import mean_squared_error as img_mse
 from skimage.metrics import structural_similarity
 
 import keras.backend as K
 from keras import Model, Input
 from tensorflow_addons.layers import InstanceNormalization, GELU
-from keras.layers import BatchNormalization, LayerNormalization, Dropout, PReLU
+from keras.layers import BatchNormalization, LayerNormalization, PReLU
 from keras.layers import Flatten, Reshape, Concatenate, Lambda
 from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense
 from keras.optimizers import Adam
 from keras.losses import mean_squared_error as loss_mse
+from keras.losses import mean_absolute_error as loss_mae
 
 ################################################################################################
 ########################################## DATALOADER ##########################################
@@ -31,6 +33,8 @@ from keras.losses import mean_squared_error as loss_mse
 n_realizations = 1000
 n_timesteps    = 45
 xy_dim         = 128
+savefig        = True
+savefolder     = 'paper/figures'
 
 def check_tensorflow_gpu():
     sys_info = tf.sysconfig.get_build_info()
@@ -147,7 +151,7 @@ def fwd_latent_spatial_interpolation(fwdX, locs, n_obs:int=100, train_or_test:st
 ################################################################################################
 ########################################## PLOT UTILS ##########################################
 ################################################################################################
-def plot_loss(fit, title='', figsize=None):
+def plot_loss(fit, title='', figsize=None, savefig:bool=False, fname:str=None):
     if figsize:
         plt.figure(figsize=figsize)
     loss, val = fit.history['loss'], fit.history['val_loss']
@@ -158,6 +162,9 @@ def plot_loss(fit, title='', figsize=None):
     plt.legend(facecolor='lightgrey', edgecolor='k'); plt.grid(True, which='both')
     plt.ylabel('Epochs'); plt.ylabel('Loss')
     plt.xticks(iterations[::epochs//10])
+    if savefig:
+        assert fname is not None, 'Please provide a filename for the figure'
+        plt.savefig('{}/{}.png'.format(savefolder, fname))
     return None
 
 def plot_loss_all(loss1, loss2, loss3, title1='Data', title2='Static', title3='Dynamic', figsize=(10,4)):
@@ -165,10 +172,13 @@ def plot_loss_all(loss1, loss2, loss3, title1='Data', title2='Static', title3='D
     plt.subplot(131); plot_loss(loss1, title=title1)
     plt.subplot(132); plot_loss(loss2, title=title2)
     plt.subplot(133); plot_loss(loss3, title=title3)
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/trainingperformance_all.png'.format(savefolder)) if savefig else None
+    plt.show()
     return None
 
-def plot_static(poro, perm, channels, multiplier=1, ncols=10, figsize=(20,4), cmaps=['binary', 'viridis', 'jet']):
+def plot_static(poro, perm, channels, multiplier=1, ncols=10, inv_flag:bool=False,
+                figsize=(20,4), cmaps=['binary', 'viridis', 'jet']):
     labels = ['facies', 'porosity', 'permeability']
     fig, axs = plt.subplots(nrows=3, ncols=ncols, figsize=figsize, facecolor='white')
     for i in range(10):
@@ -181,7 +191,12 @@ def plot_static(poro, perm, channels, multiplier=1, ncols=10, figsize=(20,4), cm
         for j in range(3):
             axs[j,i].set(xticks=[], yticks=[])
             axs[j,0].set(ylabel=labels[j])
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    if inv_flag is None:
+        plt.savefig('{}/simulated_geomodels-plot_static.png'.format(savefolder)) if savefig else None
+    else:
+        plt.savefig('{}/inverted_geomodels-plot_static.png'.format(savefolder)) if savefig else None
+    plt.show()
     return None
 
 def plot_dynamic(static, dynamic, multiplier=1, nrows=5, figsize=(30,8), cmaps=['jet', 'gnuplot2']):
@@ -197,7 +212,9 @@ def plot_dynamic(static, dynamic, multiplier=1, nrows=5, figsize=(30,8), cmaps=[
         plt.colorbar(im2, fraction=0.046, pad=0.04)
         for j in range(16):
             axs[i,j].set(xticks=[], yticks=[])
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/simulated_dynamic-plot_dynamic.png'.format(savefolder)) if savefig else None
+    plt.show()
     return None
 
 def plot_data(timestamps, opr, wpr, wcut, multiplier=1, ncols=10, figsize=(20,6)):
@@ -210,13 +227,16 @@ def plot_data(timestamps, opr, wpr, wcut, multiplier=1, ncols=10, figsize=(20,6)
         axs[2,i].plot(timestamps, wcut[i*multiplier])
         axs[0,i].set_title('realization {}'.format((i+1)*multiplier))
         axs[2,i].set_xlabel('time [years]')
+        axs[2,i].set_ylim(0,1)
         for j in range(2):
             axs[j,i].set(xticks=[])
         for j in range(3):
             axs[j,0].set(ylabel=labels[j])
             axs[j,i].grid('on')
     fig.legend(labels=well_names, loc='right', bbox_to_anchor=(0.95, 0.5))   
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/simulated_wells-plot_data.png'.format(savefolder)) if savefig else None
+    plt.show()
     return None
 
 def make_dynamic_animation(static, dynamic, ncols=11, multiplier=10, figsize=(20,6), static_label='poro', static_cmap='viridis', interval=100, blit=False):
@@ -246,6 +266,24 @@ def make_dynamic_animation(static, dynamic, ncols=11, multiplier=10, figsize=(20
     plt.show()
     return None
 
+def plot_X_img_observation(data, randx, randy, timing=-1, multiplier=1, ncols=10, figsize=(20,4), cmaps=['gnuplot2', 'jet']):
+    fig, axs = plt.subplots(2, ncols, figsize=figsize)
+    for i in range(ncols):
+        k = i*multiplier
+        axs[0,i].imshow(data[k,timing,:,:,0], cmap=cmaps[0])
+        axs[0,i].scatter(randx, randy, marker='s', c='k')
+        axs[1,i].imshow(data[k,timing,:,:,1], cmap=cmaps[1])
+        axs[1,i].scatter(randx, randy, marker='s', c='k')
+        axs[0,i].set(title='Realization {}'.format(k))
+        for j in range(2):
+            axs[j,i].set(xticks=[], yticks=[])
+    axs[0,0].set(ylabel='Pressure')
+    axs[1,0].set(ylabel='Saturation')
+    plt.tight_layout()
+    plt.savefig('{}/X_img_obersevations.png'.format(savefolder)) if savefig else None
+    plt.show()
+    return None
+
 def plot_X_observation(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
     fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
     for i in range(ncols):
@@ -257,7 +295,9 @@ def plot_X_observation(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnu
     axs[1,i].set_ylabel('Saturation', labelpad=-110, rotation=270)
     fig.text(0.5, 0.01, 'Timesteps', ha='center')
     fig.text(0.1, 0.5, 'Location Index', va='center', rotation='vertical')
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/X_obersevations.png'.format(savefolder)) if savefig else None
+    plt.show()
     return None
 
 def plot_X_line_observation(data, times, ncols=10, multiplier=1, figsize=(20,5)):
@@ -272,26 +312,13 @@ def plot_X_line_observation(data, times, ncols=10, multiplier=1, figsize=(20,5))
     axs[0,0].set_ylabel('Pressure')
     axs[1,0].set_ylabel('Saturation')
     fig.text(0.5, 0.04, 'Time [years]', ha='center')
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/X_line_obersevations.png'.format(savefolder)) if savefig else None
+    plt.show()
     return None
 
-def plot_X_img_observation(data, randx, randy, timing=-1, multiplier=1, ncols=10, figsize=(20,4), cmaps=['gnuplot2', 'jet']):
-    fig, axs = plt.subplots(2, ncols, figsize=figsize)
-    for i in range(ncols):
-        k = i*multiplier
-        axs[0,i].imshow(data[k,timing,:,:,0], cmap=cmaps[0])
-        axs[0,i].scatter(randx, randy, marker='s', c='k')
-        axs[1,i].imshow(data[k,timing,:,:,1], cmap=cmaps[1])
-        axs[1,i].scatter(randx, randy, marker='s', c='k')
-        axs[0,i].set(title='Realization {}'.format(k))
-        for j in range(2):
-            axs[j,i].set(xticks=[], yticks=[])
-    axs[0,0].set(ylabel='Pressure')
-    axs[1,0].set(ylabel='Saturation')
-    plt.tight_layout(); plt.show()
-    return None
-
-def plot_data_results(timestamps, true_train, true_test, pred_train, pred_test, channel_select=0, figsize=(20,4), ncols=10, multiplier=1):
+def plot_data_results(timestamps, true_train, true_test, pred_train, pred_test, channel_select=0, 
+                      figsize=(20,4), ncols=10, multiplier=1):
     colors = ['k', 'b', 'g']
     fig, axs = plt.subplots(2, ncols, figsize=figsize, facecolor='white')
     for i in range(ncols):
@@ -308,12 +335,22 @@ def plot_data_results(timestamps, true_train, true_test, pred_train, pred_test, 
     axs[1,0].set(ylabel='Test')
     fig.text(0.5, 0.04, 'Time [years]', ha='center')
     plt.legend(bbox_to_anchor=(1, 1.5))
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/well_predictions-plot_data_results.png'.format(savefolder)) if savefig else None
+    plt.show()
     return None
 
-def plot_static_results(true, pred, channel_select=0, multiplier=1, cmaps=['jet','gray_r'], figsize=(20,6), ncols=10):
+def plot_static_results(true, pred, train_or_test:str='train', 
+                        channel_select=0, multiplier=1, cmaps=['viridis','gray_r'], 
+                        figsize=(20,6), ncols=10):
     labs = ['True', 'Pred', 'Difference']
     fig, axs = plt.subplots(3, ncols, figsize=figsize)
+    if train_or_test == 'train':
+        true, pred = true[0], pred[0]
+    elif train_or_test=='test':
+        true, pred = true[1], pred[1]
+    else:
+        raise ValueError('train_or_test must be either "train" or "test"')
     for i in range(ncols):
         k = i*multiplier
         im1 = axs[0,i].imshow(true[k,:,:,channel_select], cmap=cmaps[0], vmin=0, vmax=1); axs[0,0].set(ylabel=labs[0])
@@ -324,11 +361,19 @@ def plot_static_results(true, pred, channel_select=0, multiplier=1, cmaps=['jet'
             axs[j,i].set(xticks=[], yticks=[])
     for m in (im1, im2, im3):
         plt.colorbar(m, fraction=0.046, pad=0.04)
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/model_predictions_{}-plot_static_results.png'.format(savefolder, train_or_test)) if savefig else None
+    plt.show()
     return None
 
-def plot_dynamic_results(true, pred, channel_select=0, multiplier=1, ncols=10, figsize=(20,4)):
+def plot_dynamic_results(true, pred, train_or_test:str='train', channel_select=1, multiplier=1, ncols=10, figsize=(20,4)):
     labs = ['True', 'Pred', 'Difference']
+    if train_or_test=='train':
+        true, pred = true[0], pred[0]
+    elif train_or_test=='test':
+        true, pred = true[1], pred[1]
+    else:
+        raise ValueError('train_or_test must be either "train" or "test"')
     if channel_select==0: cmap = 'gnuplot2'
     elif channel_select==1: cmap = 'jet'
     else: cmap = 'binary'
@@ -344,10 +389,27 @@ def plot_dynamic_results(true, pred, channel_select=0, multiplier=1, ncols=10, f
             axs[j,0].set(ylabel=labs[j])
     for m in (im1, im2, im3):
         plt.colorbar(m, fraction=0.046, pad=0.04)
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/dynamic_predictions_{}-plot_dynamic_results.png'.format(savefolder, train_or_test)) if savefig else None
+    plt.show()
     return None
 
-def plot_inversion_result(truth, prediction, channel_select=0, multiplier=10, ncols=10, figsize=(20,6), cmaps=['jet','gray_r']):
+def plot_inversion_result(truth, prediction, train_or_test:str='train',
+                          channel_select=0, multiplier=10, ncols=10, figsize=(20,6), cmaps=['viridis','gray_r']):
+    if train_or_test=='train':
+        truth, prediction = truth[0], prediction[0]
+    elif train_or_test=='test':
+        truth, prediction = truth[1], prediction[1]
+    else:
+        raise ValueError('train_or_test must be either "train" or "test"')
+    if channel_select==0:
+        dname = 'Porosity'
+    elif channel_select==1:
+        dname = 'Permeability'
+    elif channel_select==2:
+        dname = 'Facies'
+    else:
+        raise ValueError('channel_select must be either 0, 1 or 2')    
     labels = ['True','Pred','Difference']
     true, pred = truth[:,:,:,channel_select], prediction[:,:,:,channel_select]
     fig, axs = plt.subplots(3, ncols, figsize=figsize)
@@ -363,11 +425,19 @@ def plot_inversion_result(truth, prediction, channel_select=0, multiplier=10, nc
     plt.colorbar(im1, pad=0.04, fraction=0.046)
     plt.colorbar(im2, pad=0.04, fraction=0.046)
     plt.colorbar(im3, pad=0.04, fraction=0.046)
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/inv_model_prediction_{}_{}'.format(savefolder, dname, train_or_test)) if savefig else None
+    plt.show()
     return None
 
-def plot_fwd_results_data(wtrue, wfwd, channel_select=2, multiplier=1, figsize=(15,7.5),
-                          ncols=10, nrows=3, colors=['tab:blue','tab:orange','tab:green']):
+def plot_fwd_results_data(wtrue, wfwd, train_or_test:str='train', channel_select=2, multiplier=1, 
+                          figsize=(15,7.5), ncols=10, nrows=3, colors=['tab:blue','tab:orange','tab:green']):
+    if train_or_test=='train':
+        wtrue, wfwd = wtrue[0], wfwd['train']
+    elif train_or_test=='test':
+        wtrue, wfwd = wtrue[1], wfwd['test']
+    else:
+        raise ValueError('train_or_test must be either "train" or "test"')
     plt.figure(figsize=figsize)
     k = 0
     for i in range(nrows):
@@ -380,10 +450,17 @@ def plot_fwd_results_data(wtrue, wfwd, channel_select=2, multiplier=1, figsize=(
                 plt.plot(wfwd[k*multiplier,:,t,channel_select], color=colors[t], linestyle='--')
             k += 1
     plt.tight_layout()
+    plt.savefig('{}/fwd_well_prediction_{}'.format(savefolder, train_or_test)) if savefig else None
     plt.show()
     return None
 
-def plot_fwd_results_dynamic(xtrue, xfwd, multiplier=1, figsize=(15,8), ncols=6, cmaps=['gnuplot2','jet']):
+def plot_fwd_results_dynamic(xtrue, xfwd, train_or_test:str='train', multiplier=1, figsize=(15,8), ncols=6, cmaps=['gnuplot2','jet']):
+    if train_or_test=='train':
+        xtrue, xfwd = xtrue[0], xfwd['train']
+    elif train_or_test=='test':
+        xtrue, xfwd = xtrue[1], xfwd['test']
+    else:
+        raise ValueError('train_or_test must be either "train" or "test"')
     fig = plt.figure(figsize=figsize)
     gs = GridSpec(4, ncols, figure=fig)
     ax1, ax2, ax3, ax4 = [], [], [], []
@@ -402,10 +479,18 @@ def plot_fwd_results_dynamic(xtrue, xfwd, multiplier=1, figsize=(15,8), ncols=6,
     ax2[0].set_ylabel('Pred', weight='bold', color='red')
     ax3[0].set_ylabel('True', weight='bold')
     ax4[0].set_ylabel('Pred', weight='bold', color='red')
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/fwd_dynamic_prediction_{}'.format(savefolder, train_or_test)) if savefig else None
+    plt.show()
     return None
 
-def plot_fwd_results_dynamic_line(xtrue, xfwd, nrows=3, multiplier=1, nw=5, figsize=(15,8), colors=None):
+def plot_fwd_results_dynamic_line(xtrue, xfwd, train_or_test:str='train', nrows=3, multiplier=1, nw=5, figsize=(15,8), colors=None):
+    if train_or_test == 'train':
+        xtrue, xfwd = xtrue[0], xfwd['train']
+    elif train_or_test == 'test':
+        xtrue, xfwd = xtrue[1], xfwd['test']
+    else:
+        raise ValueError('train_or_test must be either "train" or "test"')
     if colors is None:
         colors = ['tab:blue','tab:orange','tab:green', 'tab:red', 'tab:purple', 
                   'tab:pink', 'tab:olive', 'tab:cyan', 'tab:brown', 'black']
@@ -427,18 +512,21 @@ def plot_fwd_results_dynamic_line(xtrue, xfwd, nrows=3, multiplier=1, nw=5, figs
         axs[nrows-1,j].set_xlabel('Time')
         axs[nrows-1,j].legend(loc='lower center', facecolor='lightgrey', edgecolor='k',
                               ncols=nw, bbox_to_anchor=(0.5,-0.5))
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/fwd_dynamic_line_prediction_{}'.format(savefolder, train_or_test)) if savefig else None
+    plt.show()
     return None
 
 def plot_inv_latent_dashboard(xtrue, wtrue, ypred, realization:int=0, 
-                              figsize=(10,5), colors=None, xcmaps=None, ycmaps=None):
+                              figsize=(10,6), colors=None, xcmaps=None, ycmaps=None):
     if colors is None:
         colors = ['tab:blue','tab:orange','tab:green']
     if xcmaps is None:
         xcmaps = ['gnuplot2','jet']
     if ycmaps is None:
-        ycmaps = ['jet','jet','binary']
+        ycmaps = ['viridis','jet','binary']
     xlabs = ['Pressure', 'Saturation']
+    wnames = ['P1','P2','P3']
     wlabs = ['OPR','WPR','WCUT']
     ylabs = ['Porosity','Permeability','Facies']
     fig = plt.figure(figsize=figsize)
@@ -456,30 +544,40 @@ def plot_inv_latent_dashboard(xtrue, wtrue, ypred, realization:int=0,
     ax3  = [ax31, ax32, ax33]
     for i in range(3):
         for j in range(3):
-            ax1[j].plot(wtrue[realization,:,i,j], color=colors[i])
+            ax1[j].plot(wtrue[realization,:,i,j], color=colors[i], label=wnames[i])
+        ax1[j].legend(loc='lower right')
         ax1[i].grid(True, which='both')
-        ax1[i].set(ylabel=wlabs[i], xlabel='Time', xlim=(0,45))
+        ax1[i].set_ylabel(wlabs[i], weight='bold')
     ax1[0].set_title('r(t)', weight='bold')
+    ax13.set_xlabel('Time'); ax11.set_xticklabels([]); ax12.set_xticklabels([])
     for i in range(2):
-        ax2[i].imshow(xtrue[realization,:,:,i].T, cmap=xcmaps[i], aspect='auto')
-        ax2[i].set(ylabel=xlabs[i]+' Locations', xlabel='Time')
+        im = ax2[i].imshow(xtrue[realization,:,:,i].T, cmap=xcmaps[i], aspect='auto', vmin=0, vmax=1)
+        ax2[i].set(ylabel='Location index')
+        cb = plt.colorbar(im, ax=ax2[i], pad=0.04, fraction=0.046)
+        cb.set_label(xlabs[i], labelpad=15, rotation=270, weight='bold')
     ax2[0].set_title('d(t)', weight='bold')
+    ax21.set_xticklabels([]); ax22.set_xlabel('Time')
     for i in range(3):
-        ax3[i].imshow(ypred[realization,:,:,i], cmap=ycmaps[i], aspect='auto')
-        ax3[i].set(xticks=[], yticks=[], xlabel='Predicted '+ylabs[i])
-    ax3[0].set_title('$\hat{m}$', weight='bold')
-    plt.tight_layout(); plt.show()
+        im = ax3[i].imshow(ypred[realization,:,:,i], cmap=ycmaps[i], aspect='auto', vmin=0, vmax=1)
+        plt.colorbar(im, ax=ax3[i], pad=0.04, fraction=0.046)
+        ax3[i].set(xticks=[], yticks=[])
+        ax3[i].set_xlabel(ylabs[i], weight='bold')
+    ax3[0].set_title('$\hat{m}=g(d,r)$', weight='bold')
+    plt.tight_layout()
+    plt.savefig('{}/dashboard_inverse_{}.png'.format(savefolder, realization)) if savefig else None
+    plt.show()
     return None
 
 def plot_fwd_latent_dashboard(wtrue, ytrue, fwdX, fwdw, 
-                          figsize=(10,5), realization:int=0, colors=None, xcmaps=None, ycmaps=None):
+                          figsize=(10,6), realization:int=0, colors=None, xcmaps=None, ycmaps=None):
     if colors is None:
-        colors = ['tab:blue', 'tab:orange', 'tab:green']
+        colors = ['tab:blue','tab:orange','tab:green']
     if xcmaps is None:
         xcmaps = ['gnuplot2','jet']
     if ycmaps is None:
-        ycmaps = ['jet','jet','binary']
+        ycmaps = ['viridis','jet','binary']
     xlabs = ['Pressure', 'Saturation']
+    wnames = ['P1','P2','P3']
     wlabs = ['OPR','WPR','WCUT']
     ylabs = ['Porosity','Permeability','Facies']
     fig = plt.figure(figsize=figsize)
@@ -496,77 +594,120 @@ def plot_fwd_latent_dashboard(wtrue, ytrue, fwdX, fwdw,
     ax32 = fig.add_subplot(gs[3:6,2])
     ax3  = [ax31, ax32]
     for i in range(3):
-        ax1[i].imshow(ytrue[realization,:,:,i], cmap=ycmaps[i], aspect='auto')
-        ax1[i].set(xticks=[], yticks=[], xlabel=ylabs[i])
-    ax11.set_title('m', weight='bold')
+        im = ax1[i].imshow(ytrue[realization,:,:,i], cmap=ycmaps[i], aspect='auto', vmin=0, vmax=1)
+        plt.colorbar(im, ax=ax1[i], pad=0.04, fraction=0.046)
+        ax1[i].set(xticks=[], yticks=[]); ax1[i].set_xlabel(ylabs[i], weight='bold')
+    ax11.set_title('$m$', weight='bold')
     for i in range(3):
         for j in range(3):
-            ax2[j].plot(wtrue[realization,:,i,j], color=colors[i])
+            ax2[j].plot(wtrue[realization,:,i,j], color=colors[i], label=wnames[j])
             ax2[j].plot(fwdw[realization,:,i,j], color=colors[i], linestyle='--')
+        ax2[j].legend(loc='lower right')
         ax2[i].grid(True, which='both')
-        ax2[i].set(ylabel=wlabs[i], xlabel='time')
-    ax21.set_title('r(t)', weight='bold')
+        ax2[i].set_ylabel(wlabs[i], weight='bold')
+    ax21.set_title('$r(t)=\hat{f}_1(m)$', weight='bold')
+    ax23.set_xlabel('time'); ax21.set_xticklabels([]); ax22.set_xticklabels([])
     for i in range(2):
-        ax3[i].imshow(fwdX[realization,:,:,i].T, cmap=xcmaps[i], aspect='auto')
-        ax3[i].set(ylabel=xlabs[i]+' Locations', xlabel='time')
-    ax31.set_title('d(t)', weight='bold')
+        im = ax3[i].imshow(fwdX[realization,:,:,i].T, cmap=xcmaps[i], aspect='auto', vmin=0, vmax=1)
+        cb = plt.colorbar(im, ax=ax3[i], pad=0.04, fraction=0.046)
+        cb.set_label(xlabs[i], weight='bold', rotation=270, labelpad=15)
+        ax3[i].set(ylabel='Location index')
+    ax31.set_title('$d(t)=\hat{f}_2(m)$', weight='bold')
+    ax31.set_xticklabels([]); ax32.set_xlabel('time')
     for ax in ax2:
         ax.set(xlim=(0,45))
-    plt.tight_layout(); plt.show()
+    plt.tight_layout()
+    plt.savefig('{}/dashboard_forward_{}.png'.format(savefolder, realization)) if savefig else None
+    plt.show()
     return None
 
-def plot_fwd_latent_map(s, ytrue, xtrue, locs, realization:int=1, channel:int=1, 
-                        vmin=0.2, vmax=0.8, figsize=(12,10)):
+def plot_fwd_latent_map(s, ytrue, xtrue, locs, realization:int=1, xchannel:int=1, ychannel:int=0,
+                        ms=15, m='s', minj='v', mprod='^', vmin=0.2, vmax=0.8, figsize=(12,10)):
     randx, randy = locs
     injx,  injy  = np.array([0,   0,   0]),   np.array([0, 63, 127])
     prodx, prody = np.array([127, 127, 127]), np.array([0, 63, 127])
-    ylabels = ['Porosity','Log Permeability','Facies']
+    ylabels = ['Porosity','Permeability','Facies']
+    ycmaps  = ['viridis','jet','binary']
+    xlabels = ['Pressure','Saturation']
+    xcmaps  = ['gnuplot2','jet']
     fig = plt.figure(figsize=figsize)
-    gs  = GridSpec(4,5,width_ratios=[1,1,1,1,0.125])
+    subfigs = fig.subfigures(2, 1, height_ratios=[1,2.33])
+    gs1 = GridSpec(1, 5, figure=subfigs[0])
+    gs2 = GridSpec(3, 5, figure=subfigs[1], width_ratios=[1,1,1,1,0.1])
+    subfigs[0].subplots_adjust(wspace=0.5)
+    cax = subfigs[1].add_subplot(gs2[:, -1])
+    for j in range(3):
+        ax = subfigs[0].add_subplot(gs1[0, j])
+        ax.imshow(ytrue[realization,...,j], cmap=ycmaps[j])
+        ax.set_title(ylabels[j], weight='bold')
+        ax.set(xticklabels=[], yticklabels=[])
+        ax.set_ylabel('Ground Truth', weight='bold', fontsize=12) if j==0 else None
+        ax.scatter(injx, injy, s=150, c='b', marker=minj, edgecolor='k')
+        ax.scatter(prodx, prody, s=150, c='r', marker=mprod, edgecolor='k')
+    for p, j in enumerate(range(3,5)):
+        ax = subfigs[0].add_subplot(gs1[0, j])
+        ax.imshow(xtrue[realization,-1,:,:,p], cmap=xcmaps[p])
+        ax.set_title(xlabels[p]+' @ t=45', weight='bold')
+        ax.set(xticklabels=[], yticklabels=[])
+        ax.scatter(injx, injy, s=150, c='b', marker=minj, edgecolor='k')
+        ax.scatter(prodx, prody, s=150, c='r', marker=mprod, edgecolor='k')
     k = 0
-    for i in range(1,4):
+    for i in range(3):
         for j in range(4):
-            ax = fig.add_subplot(gs[i,j])
-            ax.scatter(randy, randx, s=10, c='k',  marker='o')
-            ax.scatter(injx,  injy,  s=150, c='b', marker='v')
-            ax.scatter(prodx, prody, s=150, c='r', marker='^')
-            im = ax.imshow(s[realization,k,:,:,channel], cmap='jet', vmin=vmin, vmax=vmax)
-            ax.imshow(ytrue[realization,...,0], cmap='viridis', alpha=0.3)
-            ax.set(xticks=[], yticks=[])
+            ax = subfigs[1].add_subplot(gs2[i, j])
+            ax.scatter(randy, randx, s=ms, marker=m, c='k')
+            ax.scatter(injx, injy, s=150, c='b', marker=minj, edgecolor='k')
+            ax.scatter(prodx, prody, s=150, c='r', marker=mprod, edgecolor='k')
+            im = ax.imshow(s[realization,k,:,:,xchannel], cmap=xcmaps[xchannel], vmin=vmin, vmax=vmax, aspect='auto')
+            ax.imshow(ytrue[realization,...,ychannel], cmap=ycmaps[ychannel], alpha=0.3)
+            ax.set(xticklabels=[], yticklabels=[])
             ax.set_title('t={}'.format(k+1), weight='bold')
             k += 4
-    for i in range(3):
-        ax = fig.add_subplot(gs[0,i])
-        cmap = 'binary' if i==2 else 'jet'
-        yim = ax.imshow(ytrue[realization,...,i], cmap=cmap)
-        ax.set_title('True {}'.format(ylabels[i]), weight='bold')
-        plt.colorbar(yim, ax=ax, pad=0.04, fraction=0.046)
-        ax.set(xticks=[], yticks=[])
-    xax = fig.add_subplot(gs[0, -2])
-    xim = xax.imshow(xtrue[realization,-1,...,channel], cmap='jet', vmin=vmin, vmax=vmax)
-    xax.set_title('True Saturation (t=45)', weight='bold')
-    plt.colorbar(xim, ax=xax, pad=0.04, fraction=0.046)
-    xax.set(xticks=[], yticks=[])
-    cax = fig.add_subplot(gs[1:,-1])
-    cb = plt.colorbar(im, cax=cax, orientation='vertical', pad=0.04, fraction=0.046)
-    cb.set_label('Oil Saturation', weight='bold', rotation=270, labelpad=15, fontsize=14)
-    fig.suptitle('Realization {}'.format(realization), weight='bold', fontsize=16)
+    subfigs[1].text(0.03, 0.5, 'Predicted Saturation distribution over time', 
+                    ha='center', va='center', weight='bold', fontsize=14, rotation=90)
+    subfigs[0].text(0.5, 1.025, 'Realization {}'.format(realization), 
+                    weight='bold', fontsize=16, ha='center', va='center', 
+                    bbox=dict(edgecolor='k', facecolor='w'))
+    plt.colorbar(im, cax=cax, pad=0.04, fraction=0.046)
     plt.tight_layout()
+    plt.savefig('{}/fwd_spatial_predictions_{}.png'.format(savefolder, realization)) if savefig else None
     plt.show()
+    return None
 
-def plot_fwd_resoil(true, pred, correction=0.75, bins=25, n_obs=100, figsize=(7.5,4)):
+def plot_fwd_resoil(true, pred, percentiles=[10,50,90], correction=0.75, bins=25, n_obs=100, 
+                    cmap='inferno', s=50, m='s', figsize=(12,4), return_data:bool=True):
     xtrue = np.sum(true[:n_obs,...,-1], axis=(1,2,3))/(xy_dim*xy_dim)
     xpred = np.sum(np.nan_to_num(pred[...,-1], nan=correction), axis=(1,2,3))/(xy_dim*xy_dim)
+    print('R2: {:.4f} | MSE: {:.4f}'.format(r2_score(xtrue, xpred), mean_squared_error(xtrue, xpred))) 
+    xcum_true_uq = np.percentile(xtrue, percentiles)
+    xcum_pred_uq = np.percentile(xpred, percentiles)
+    uq = {'True': xcum_true_uq, 'Predicted': xcum_pred_uq}
+    print('P  - True: {} | Predicted: {}'.format(np.round(xcum_true_uq,3), np.round(xcum_pred_uq,3)))
+    print('UQ - True: {} | Predicted: {}'.format(np.round(xcum_true_uq[2]-xcum_true_uq[0],4),
+                                                 np.round(xcum_pred_uq[2]-xcum_pred_uq[0],4)))
     plt.figure(figsize=figsize)
+    plt.subplot(121)
     plt.hist(xtrue, bins=bins, label='True', density=True, edgecolor='k')
     plt.hist(xpred, bins=bins, label='Predicted', density=True, edgecolor='k', alpha=0.6)
     plt.xlabel('Average Remaining Oil Saturation [%]', weight='bold')
     plt.ylabel('Density', weight='bold')
     plt.grid(True, which='both', alpha=0.5)
     plt.legend(facecolor='lightgrey', edgecolor='k')
+    plt.subplot(122)
+    im = plt.scatter(xtrue, xpred, c=range(n_obs), s=s, marker=m, edgecolor='k', alpha=0.85, cmap=cmap, vmin=0, vmax=100)
+    cb = plt.colorbar(im, pad=0.04, fraction=0.046)
+    cb.set_label('Realization #', labelpad=15, rotation=270, weight='bold')
+    start, end = np.floor(np.min([xtrue,xpred])), np.ceil(np.max([xtrue,xpred]))
+    plt.xlim(start, end); plt.ylim(start, end)
+    plt.axline([start, start], [end, end], color='k', linestyle='--')
+    plt.grid(True, which='both', alpha=0.5)
+    plt.xlabel('True', weight='bold'); plt.ylabel('Predicted', weight='bold')
+    plt.title('Average Remaining Oil Saturation [%]', weight='bold')
     plt.tight_layout()
+    plt.savefig('{}/fwd_resoil_uncertainty.png'.format(savefolder)) if savefig else None
     plt.show()
-    return None
+    if return_data:
+        return xtrue, xpred, uq
 
 ################################################################################################
 ######################################### MODEL UTILS ##########################################
@@ -762,31 +903,53 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     return inv_train, inv_test
 
-def make_fwd_regressor(xf, wf, yf, dynamic_dec, data_dec, static_enc, 
-                       drop=0.1, opt=Adam(1e-3), loss='mse', epochs=500, batch=70):
+def make_fwd_regressor(xf, wf, yf, dynamic_dec, data_dec, static_enc, latent_dim=10,
+                       opt=Adam(1e-3), epochs=100, batch=80):
     dynamic_dec.trainable = False
     data_dec.trainable    = False
     static_enc.trainable  = False
     def dense_block(input, neurons):
-        _ = Dense(neurons, kernel_regularizer='l2')(input)
-        _ = LayerNormalization()(_)
+        _ = Dense(neurons)(input)
         _ = BatchNormalization()(_)
-        _ = Dropout(drop)(_)
-        _ = PReLU()(_)
+        _ = GELU()(_)
         return _
+    def sample(args, mu=0.0, std=1.0):
+        mean, sigma = args
+        epsilon = K.random_normal(shape=(K.shape(mean)[0], latent_dim), mean=mu, stddev=std)
+        return mean + K.exp(sigma) * epsilon
     y_inp = Input(shape=(yf.shape[1:]))
     y_latent = static_enc(y_inp)
-    y_x = dense_block(y_latent, 128)
-    y_x = dense_block(y_x, 10)
-    x_out = dynamic_dec(y_x)
-    y_w = dense_block(y_latent, 128)
-    y_w = dense_block(y_w, 10)
-    w_out = data_dec(y_w)
-    fwd = Model(y_inp, [x_out, w_out])
+    y_latent = dense_block(y_latent, 2048)
+    y_latent = dense_block(y_latent, 512)
+    y_latent = dense_block(y_latent, 128)
+    # dynamic field data (x)
+    x_inp = Input(shape=(xf.shape[1:]))
+    x_mu = Dense(latent_dim)(y_latent)
+    x_sd = Dense(latent_dim)(y_latent)
+    x_z = Lambda(sample)([x_mu, x_sd])
+    x_out = dynamic_dec(x_z)
+    x_mse = K.sum(loss_mse(x_inp, x_out))*np.prod(xf.shape[1:])
+    x_kl_loss = -0.5 * K.sum(1 + x_sd - K.square(x_mu) - K.exp(x_sd), axis=-1)
+    x_loss = K.mean(x_mse + x_kl_loss)
+    # dynamic well data (w)
+    w_inp = Input(shape=(wf.shape[1:]))
+    w_mu = Dense(latent_dim)(y_latent)
+    w_sd = Dense(latent_dim)(y_latent)
+    w_z = Lambda(sample)([w_mu, w_sd])
+    w_out = data_dec(w_z)
+    w_mse = K.sum(loss_mse(w_inp, w_out))
+    w_mae = K.sum(loss_mae(w_inp, w_out))
+    w_ln_loss = K.mean(w_mse + w_mae)*np.prod(wf.shape[1:])
+    w_kl_loss = -0.5 * K.sum(1 + w_sd - K.square(w_mu) - K.exp(w_sd), axis=-1)
+    w_loss = K.mean(w_ln_loss + w_kl_loss)
+    # inverse forward model
+    fwd = Model([x_inp, w_inp, y_inp], [x_out, w_out])
+    fwd.add_loss(K.mean(x_loss + w_loss))
+    # compile and train
     rparams = fwd.count_params()
-    fwd.compile(optimizer=opt, loss=loss, metrics=['mse'])
+    fwd.compile(optimizer=opt, metrics=['mse'])
     start = time()
-    fit = fwd.fit(yf, [xf, wf], epochs=epochs, batch_size=batch, verbose=0, validation_split=0.2)
+    fit = fwd.fit([xf,wf,yf], [xf, wf], epochs=epochs, batch_size=batch, verbose=0, validation_split=0.2)
     traintime = (time()-start)/60
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(rparams, traintime))
     return fwd, fit
@@ -810,27 +973,109 @@ def make_fwd_prediction(fwdmodel, x_tuple, w_tuple, y_tuple):
     return fwd_X, fwd_W
 
 def save_models(encoders, decoders, autoencoders, regressors, folder='models_2D'):
+    # encoders
     static_enc, dynamic_enc, data_enc = encoders
     static_enc.save('{}/static_enc.keras'.format(folder))
     dynamic_enc.save('{}/dynamic_enc.keras'.format(folder))
     data_enc.save('{}/data_enc.keras'.format(folder))
-    
+    # decoders
     static_dec, dynamic_dec, data_dec = decoders
     static_dec.save('{}/static_dec.keras'.format(folder))
     dynamic_dec.save('{}/dynamic_dec.keras'.format(folder))
     data_dec.save('{}/data_dec.keras'.format(folder))
-
+    # autoencoders
     static_ae, dynamic_ae, data_ae = autoencoders
     static_ae.save('{}/static_ae.keras'.format(folder))
     dynamic_ae.save('{}/dynamic_ae.keras'.format(folder))
     data_ae.save('{}/data_ae.keras'.format(folder))
-
+    # latent regressors
     inv_reg, fwd_reg = regressors
     inv_reg.save('{}/inv_latent.keras'.format(folder))
     fwd_reg.save('{}/fwd_latent.keras'.format(folder))
-
+    # done
     print('All models saved to {}'.format(folder))
     return None
+
+################################################################################################
+######################################## END OF SCRIPT #########################################
+################################################################################################
+
+if __name__ == '__main__':
+    print('Module: utils_2d.py | Direct Execution')
+    print('-------------------------------------')
+    
+    ### Initialize script
+    K.clear_session()
+    check_tensorflow_gpu()
+    
+    ### Load and visualize data
+    timestamps, poro, perm, channels, pressure, saturation, well_opr, well_wpr, well_wcut = load_initial_data()
+    plot_static(poro, perm, channels)
+    plot_data(timestamps, well_opr, well_wpr, well_wcut)
+    plot_dynamic(poro, saturation, multiplier=10, cmaps=['viridis','jet']) 
+    
+    ### Process data
+    # X_data, y_data, w_data = split_xyw(poro,perm,channels,pressure,saturation,well_opr,well_wpr,well_wcut)
+    X_data, y_data, w_data, timestamps = load_xywt()
+    X_train, X_test, y_train, y_test, w_train, w_test, randx, randy = my_train_test_split(X_data, y_data, w_data, nobs=30)
+    plot_X_img_observation(X_data, randx, randy)
+    plot_X_observation(X_train)
+    plot_X_line_observation(X_train, timestamps)
+    
+    # AUTOENCODER models
+    static_enc,  static_dec,  static_ae,  static_fit  = make_static_ae(y_train)
+    dynamic_enc, dynamic_dec, dynamic_ae, dynamic_fit = make_dynamic_ae(X_train)
+    data_enc,    data_dec,    data_ae,    data_fit    = make_data_ae(w_train)
+    plot_loss_all(data_fit, static_fit, dynamic_fit)
+    
+    w_train_pred, w_test_pred = make_ae_prediction(w_train, w_test, data_ae)
+    plot_data_results(timestamps, w_train, w_test, w_train_pred, w_test_pred, channel_select=2, multiplier=10)
+    
+    y_train_pred, y_test_pred = make_ae_prediction(y_train, y_test, static_ae)
+    plot_static_results(y_train, y_train_pred, multiplier=10, channel_select=0, cmaps=['viridis','gray_r'])
+    plot_static_results(y_test, y_test_pred, multiplier=10, channel_select=0, cmaps=['viridis','gray_r'])
+    
+    X_train_pred, X_test_pred = make_ae_prediction(X_train, X_test, dynamic_ae)
+    plot_dynamic_results(X_train, X_train_pred, multiplier=10, channel_select=1)
+    plot_dynamic_results(X_test, X_test_pred, multiplier=10, channel_select=1)
+    
+    # Latent INVERSE model
+    X_full, w_full, y_full = make_full_traintest(X_train, X_test, w_train, w_test, y_train, y_test)
+    inv, inv_fit = make_inv_regressor(X_full, w_full, y_full, dynamic_enc, data_enc, static_dec)
+    plot_loss(inv_fit, figsize=(4,3))
+    
+    inv_train, inv_test = make_inv_prediction(inv, [X_train, X_test], [w_train, w_test], [y_train, y_test])
+    plot_inv_latent_dashboard(X_full, w_full, inv_train)
+    plot_inversion_result(y_train, inv_train, multiplier=10, channel_select=0, cmaps=['viridis','gray_r'])
+    plot_inversion_result(y_test, inv_test, multiplier=10, channel_select=0, cmaps=['viridis','gray_r'])
+    
+    poro_hat, perm_hat, channels_hat = make_inv_backnorm([inv_train, inv_test], [poro, perm, channels])
+    plot_static(poro_hat, perm_hat, channels_hat, multiplier=10)
+    
+    # Latent FORWARD model
+    fwd, fwd_fit = make_fwd_regressor(X_full, w_full, y_full, dynamic_dec, data_dec, static_enc)
+    plot_loss(fwd_fit, figsize=(4,3))
+    
+    fwd_X, fwd_w = make_fwd_prediction(fwd, [X_train, X_test], [w_train, w_test], [y_train, y_test])
+    plot_fwd_results_data(w_train, fwd_w['train'])
+    plot_fwd_results_data(w_test, fwd_w['test'])
+    plot_fwd_results_dynamic(X_train, fwd_X['train'])
+    plot_fwd_results_dynamic(X_test, fwd_X['test'])
+    plot_fwd_results_dynamic_line(X_train, fwd_X['train'], nw=3)
+    plot_fwd_results_dynamic_line(X_test, fwd_X['test'], nw=3)
+    plot_fwd_latent_dashboard(w_full, y_full, fwd_X['train'], fwd_w['train'])
+    
+    spatial_fwdX = fwd_latent_spatial_interpolation(fwd_X, locs=[randx,randy], train_or_test='train', n_obs=100)
+    plot_fwd_latent_map(spatial_fwdX, y_train, X_data, locs=[randx, randy], realization=14)
+    xcum_true, xcum_pred, uq = plot_fwd_resoil(X_data, spatial_fwdX, correction=0.75)
+    
+    # Save models
+    print('Saving models to disk...')
+    save_models([static_enc,dynamic_enc,data_enc],[static_dec,dynamic_dec,data_dec],[static_ae,dynamic_ae,data_ae],[inv, fwd])
+
+    # Exit
+    print('All done!')
+    print('-------------------------------------')
 
 ################################################################################################
 ############################################# END ##############################################
