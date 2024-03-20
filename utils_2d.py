@@ -33,6 +33,7 @@ from keras.losses import mean_absolute_error as loss_mae
 n_realizations = 1000
 n_timesteps    = 45
 xy_dim         = 128
+showfig        = True
 savefig        = True
 savefolder     = 'paper/figures'
 
@@ -118,16 +119,27 @@ def load_xywt():
     print('X shape: {} | w shape: {} \ny shape: {} | t shape: {}'.format(x.shape, w.shape, y.shape, t.shape))
     return x, y, w, t
 
-def my_train_test_split(X, y, w, nobs, split_perc=0.7, n_realizations=n_realizations, xy_dim=xy_dim):
+def my_train_test_split(X, y, w, nobs, split_perc=0.7, n_realizations=n_realizations, xy_dim=xy_dim, equigrid:bool=False):
     train_size = int(np.ceil(n_realizations*split_perc))
-    randx, randy = [np.random.randint(xy_dim, size=nobs) for _ in range(2)]
+    def perfect_square(x):
+        if x>= 0:
+            sr = int(np.sqrt(x))
+            return (sr*sr)==x
+        return False
+    if equigrid:
+        assert perfect_square(nobs), 'Number of observations must be a perfect square for equigrid splitting'
+        sqrt_obs = int(np.sqrt(nobs))
+        randl = np.linspace(0, xy_dim-1, sqrt_obs, dtype=int)
+        randx, randy = [r.flatten() for r in np.meshgrid(randl, randl)]
+    else:
+        randx, randy = [np.random.randint(xy_dim, size=nobs) for _ in range(2)]
     X_train, X_test = X[:train_size,:,randx,randy], X[train_size:,:,randx,randy]
     w_train, w_test = w[:train_size], w[train_size:]
     y_train, y_test = y[:train_size], y[train_size:]
     print('X_train shape: {}   | X_test shape: {}'.format(X_train.shape, X_test.shape))
     print('w_train shape: {}    | w_test shape: {}'.format(w_train.shape, w_test.shape))
     print('y_train shape: {} | y_test shape: {}'.format(y_train.shape, y_test.shape))
-    return X_train, X_test, y_train, y_test, w_train, w_test, randx, randy
+    return [X_train, X_test], [y_train, y_test], [w_train, w_test], [randx, randy]
 
 def make_inv_backnorm(inv_tuple, true_tuple):
     inv_train, inv_test = inv_tuple
@@ -137,6 +149,23 @@ def make_inv_backnorm(inv_tuple, true_tuple):
     perm_hat = my_normalize(inv_all[...,1], perm, mode='inverse')
     chan_hat = my_normalize(inv_all[...,2], channels, mode='inverse')
     return poro_hat, perm_hat, chan_hat
+
+def make_fwd_X_backnorm(fwd_tuple, true_tuple):
+    fwd_train, fwd_test = fwd_tuple
+    fwd_all = np.concatenate([fwd_train, fwd_test])
+    pressure, saturation = true_tuple
+    pres_hat = my_normalize(fwd_all[...,0], pressure, mode='inverse')
+    satu_hat = my_normalize(fwd_all[...,1], saturation, mode='inverse')
+    return pres_hat, satu_hat
+
+def make_fwd_w_backnorm(fwd_tuple, true_tuple):
+    fwd_train, fwd_test = fwd_tuple
+    fwd_all = np.concatenate([fwd_train, fwd_test])
+    well_opr, well_wpr, well_wcut = true_tuple
+    opr_hat = my_normalize(fwd_all[...,0], well_opr, mode='inverse')
+    wpr_hat = my_normalize(fwd_all[...,1], well_wpr, mode='inverse')
+    wcut_hat = my_normalize(fwd_all[...,2], well_wcut, mode='inverse')
+    return opr_hat, wpr_hat, wcut_hat
 
 def fwd_latent_spatial_interpolation(fwdX, locs, n_obs:int=100, train_or_test:str='train', method:str='cubic'):
     randx, randy = locs
@@ -167,17 +196,17 @@ def plot_loss(fit, title='', figsize=None, savefig:bool=False, fname:str=None):
         plt.savefig('{}/{}.png'.format(savefolder, fname))
     return None
 
-def plot_loss_all(loss1, loss2, loss3, title1='Data', title2='Static', title3='Dynamic', figsize=(10,4)):
+def plot_loss_all(loss1, loss2, loss3, title1:str='Data', title2:str='Static', title3:str='Dynamic', figsize=(10,4)):
     plt.figure(figsize=figsize, facecolor='white')
     plt.subplot(131); plot_loss(loss1, title=title1)
     plt.subplot(132); plot_loss(loss2, title=title2)
     plt.subplot(133); plot_loss(loss3, title=title3)
     plt.tight_layout()
     plt.savefig('{}/trainingperformance_all.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_static(poro, perm, channels, multiplier=1, ncols=10, inv_flag:bool=False,
+def plot_static(poro, perm, channels, multiplier:int=1, ncols:int=10, inv_flag:bool=False,
                 figsize=(20,4), cmaps=['binary', 'viridis', 'jet']):
     labels = ['facies', 'porosity', 'permeability']
     fig, axs = plt.subplots(nrows=3, ncols=ncols, figsize=figsize, facecolor='white')
@@ -196,10 +225,10 @@ def plot_static(poro, perm, channels, multiplier=1, ncols=10, inv_flag:bool=Fals
         plt.savefig('{}/inverted_geomodels-plot_static.png'.format(savefolder)) if savefig else None
     else:
         plt.savefig('{}/simulated_geomodels-plot_static.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_dynamic(static, dynamic, multiplier=1, nrows=5, figsize=(30,8), cmaps=['jet', 'gnuplot2']):
+def plot_dynamic(static, dynamic, multiplier:int=1, nrows:int=5, figsize=(30,8), cmaps=['jet', 'gnuplot2']):
     fig, axs = plt.subplots(nrows=nrows, ncols=16, figsize=figsize, facecolor='white')
     for i in range(nrows):
         k = i*multiplier
@@ -214,10 +243,10 @@ def plot_dynamic(static, dynamic, multiplier=1, nrows=5, figsize=(30,8), cmaps=[
             axs[i,j].set(xticks=[], yticks=[])
     plt.tight_layout()
     plt.savefig('{}/simulated_dynamic-plot_dynamic.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_data(timestamps, opr, wpr, wcut, multiplier=1, ncols=10, figsize=(20,6)):
+def plot_data(timestamps, opr, wpr, wcut, multiplier:int=1, ncols:int=10, figsize=(20,6)):
     labels     = ['Oil Rate [bpd]', 'Water Rate [bpd]', 'Water Cut [%]']
     well_names = ['P1', 'P2', 'P3']
     fig, axs = plt.subplots(nrows=3, ncols=ncols, figsize=figsize, facecolor='white')
@@ -236,10 +265,11 @@ def plot_data(timestamps, opr, wpr, wcut, multiplier=1, ncols=10, figsize=(20,6)
     fig.legend(labels=well_names, loc='right', bbox_to_anchor=(0.95, 0.5))   
     plt.tight_layout()
     plt.savefig('{}/simulated_wells-plot_data.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def make_dynamic_animation(static, dynamic, ncols=11, multiplier=10, figsize=(20,6), static_label='poro', static_cmap='viridis', interval=100, blit=False):
+def make_dynamic_animation(static, dynamic, ncols:int=11, multiplier:int=10, figsize=(20,6), 
+                           static_label:str='poro', static_cmap:str='viridis', interval=100, blit:bool=False):
     labels = [static_label, 'pressure', 'saturation']
     pressure, saturation = dynamic
     tot_frames = pressure.shape[1]
@@ -263,10 +293,10 @@ def make_dynamic_animation(static, dynamic, ncols=11, multiplier=10, figsize=(20
         return axs[1,k], axs[2,k]
     ani = animation.FuncAnimation(fig, animate, frames=tot_frames, blit=blit, interval=interval)
     ani.save('figures/dynamic_animation.gif')
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_X_img_observation(data, randx, randy, timing=-1, multiplier=1, ncols=10, figsize=(20,4), cmaps=['gnuplot2', 'jet']):
+def plot_X_img_observation(data, randx, randy, timing=-1, multiplier:int=1, ncols:int=10, figsize=(20,4), cmaps=['gnuplot2', 'jet']):
     fig, axs = plt.subplots(2, ncols, figsize=figsize)
     for i in range(ncols):
         k = i*multiplier
@@ -281,10 +311,10 @@ def plot_X_img_observation(data, randx, randy, timing=-1, multiplier=1, ncols=10
     axs[1,0].set_ylabel('Saturation', weight='bold')
     plt.tight_layout()
     plt.savefig('{}/X_img_obersevations.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_X_observation(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
+def plot_X_observation(data, ncols:int=10, multiplier:int=1, figsize=(20,3), cmaps=['gnuplot2','jet']):
     fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
     for i in range(ncols): 
         k = i*multiplier
@@ -297,10 +327,10 @@ def plot_X_observation(data, ncols=10, multiplier=1, figsize=(20,3), cmaps=['gnu
     fig.text(0, 0.5, 'Location Index', va='center', rotation='vertical', weight='bold')
     plt.tight_layout()
     plt.savefig('{}/X_obersevations.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_X_line_observation(data, times, ncols=10, multiplier=1, figsize=(20,5)):
+def plot_X_line_observation(data, times, ncols:int=10, multiplier:int=1, figsize=(20,5)):
     fig, axs = plt.subplots(2, ncols, figsize=figsize, sharex=True, sharey=True)
     for i in range(ncols):
         k = i*multiplier
@@ -314,11 +344,11 @@ def plot_X_line_observation(data, times, ncols=10, multiplier=1, figsize=(20,5))
     fig.text(0.5, 0, 'Time [years]', ha='center', weight='bold')
     plt.tight_layout()
     plt.savefig('{}/X_line_obersevations.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_data_results(timestamps, true_train, true_test, pred_train, pred_test, channel_select=0, 
-                      figsize=(20,4), ncols=10, multiplier=1):
+def plot_data_results(timestamps, true_train, true_test, pred_train, pred_test, channel_select:int=0, 
+                      ncols:int=10, multiplier:int=1, figsize=(20,4)):
     colors = ['k', 'b', 'g']
     fig, axs = plt.subplots(2, ncols, figsize=figsize, facecolor='white')
     for i in range(ncols):
@@ -337,12 +367,11 @@ def plot_data_results(timestamps, true_train, true_test, pred_train, pred_test, 
     plt.legend(bbox_to_anchor=(1, 1.5))
     plt.tight_layout()
     plt.savefig('{}/well_predictions-plot_data_results.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
 def plot_static_results(true, pred, train_or_test:str='train', 
-                        channel_select=0, multiplier=1, cmaps=['viridis','gray_r'], 
-                        figsize=(20,6), ncols=10):
+                        channel_select:int=0, multiplier:int=1, ncols:int=10, cmaps=['viridis','gray_r'], figsize=(20,6)):
     labs = ['True', 'Pred', 'Difference']
     fig, axs = plt.subplots(3, ncols, figsize=figsize)
     if train_or_test == 'train':
@@ -363,10 +392,10 @@ def plot_static_results(true, pred, train_or_test:str='train',
         plt.colorbar(m, fraction=0.046, pad=0.04)
     plt.tight_layout()
     plt.savefig('{}/model_predictions_{}-plot_static_results.png'.format(savefolder, train_or_test)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_dynamic_results(true, pred, train_or_test:str='train', channel_select=1, multiplier=1, ncols=10, figsize=(20,4)):
+def plot_dynamic_results(true, pred, train_or_test:str='train', channel_select:int=1, multiplier:int=1, ncols:int=10, figsize=(20,4)):
     labs = ['True', 'Pred', 'Difference']
     if train_or_test=='train':
         true, pred = true[0], pred[0]
@@ -391,11 +420,11 @@ def plot_dynamic_results(true, pred, train_or_test:str='train', channel_select=1
         plt.colorbar(m, fraction=0.046, pad=0.04)
     plt.tight_layout()
     plt.savefig('{}/dynamic_predictions_{}-plot_dynamic_results.png'.format(savefolder, train_or_test)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
 def plot_inversion_result(truth, prediction, train_or_test:str='train',
-                          channel_select=0, multiplier=10, ncols=10, figsize=(20,6), cmaps=['viridis','gray_r']):
+                          channel_select:int=0, multiplier:int=10, ncols:int=10, figsize=(20,6), cmaps=['viridis','gray_r']):
     if train_or_test=='train':
         truth, prediction = truth[0], prediction[0]
     elif train_or_test=='test':
@@ -427,11 +456,11 @@ def plot_inversion_result(truth, prediction, train_or_test:str='train',
     plt.colorbar(im3, pad=0.04, fraction=0.046)
     plt.tight_layout()
     plt.savefig('{}/inv_model_prediction_{}_{}'.format(savefolder, dname, train_or_test)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_fwd_results_data(wtrue, wfwd, train_or_test:str='train', channel_select=2, multiplier=1, 
-                          figsize=(15,7.5), ncols=10, nrows=3, colors=['tab:blue','tab:orange','tab:green']):
+def plot_fwd_results_data(wtrue, wfwd, train_or_test:str='train', channel_select:int=2, multiplier:int=1, 
+                          ncols:int=10, nrows:int=3, colors=['tab:blue','tab:orange','tab:green'], figsize=(15,7.5)):
     if train_or_test=='train':
         wtrue, wfwd = wtrue[0], wfwd['train']
     elif train_or_test=='test':
@@ -451,10 +480,10 @@ def plot_fwd_results_data(wtrue, wfwd, train_or_test:str='train', channel_select
             k += 1
     plt.tight_layout()
     plt.savefig('{}/fwd_well_prediction_{}'.format(savefolder, train_or_test)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_fwd_results_dynamic(xtrue, xfwd, train_or_test:str='train', multiplier=1, figsize=(15,8), ncols=6, cmaps=['gnuplot2','jet']):
+def plot_fwd_results_dynamic(xtrue, xfwd, train_or_test:str='train', multiplier:int=1, ncols:int=6, cmaps=['gnuplot2','jet'], figsize=(15,8)):
     if train_or_test=='train':
         xtrue, xfwd = xtrue[0], xfwd['train']
     elif train_or_test=='test':
@@ -481,10 +510,10 @@ def plot_fwd_results_dynamic(xtrue, xfwd, train_or_test:str='train', multiplier=
     ax4[0].set_ylabel('Pred', weight='bold', color='red')
     plt.tight_layout()
     plt.savefig('{}/fwd_dynamic_prediction_{}'.format(savefolder, train_or_test)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_fwd_results_dynamic_line(xtrue, xfwd, train_or_test:str='train', nrows=3, multiplier=1, nw=5, figsize=(15,8), colors=None):
+def plot_fwd_results_dynamic_line(xtrue, xfwd, train_or_test:str='train', nrows:int=3, multiplier:int=1, nw:int=5, figsize=(15,8), colors=None):
     if train_or_test == 'train':
         xtrue, xfwd = xtrue[0], xfwd['train']
     elif train_or_test == 'test':
@@ -514,7 +543,7 @@ def plot_fwd_results_dynamic_line(xtrue, xfwd, train_or_test:str='train', nrows=
                               ncols=nw, bbox_to_anchor=(0.5,-0.5))
     plt.tight_layout()
     plt.savefig('{}/fwd_dynamic_line_prediction_{}'.format(savefolder, train_or_test)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
 def plot_inv_latent_dashboard(xtrue, wtrue, ypred, realization:int=0, 
@@ -565,7 +594,7 @@ def plot_inv_latent_dashboard(xtrue, wtrue, ypred, realization:int=0,
     ax3[0].set_title('$\hat{m}=g(d,r)$', weight='bold')
     plt.tight_layout()
     plt.savefig('{}/dashboard_inverse_{}.png'.format(savefolder, realization)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
 def plot_fwd_latent_dashboard(wtrue, ytrue, fwdX, fwdw, 
@@ -618,7 +647,7 @@ def plot_fwd_latent_dashboard(wtrue, ytrue, fwdX, fwdw,
         ax.set(xlim=(0,45))
     plt.tight_layout()
     plt.savefig('{}/dashboard_forward_{}.png'.format(savefolder, realization)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
 def plot_fwd_latent_map(s, ytrue, xtrue, locs, realization:int=1, xchannel:int=1, ychannel:int=0,
@@ -671,10 +700,10 @@ def plot_fwd_latent_map(s, ytrue, xtrue, locs, realization:int=1, xchannel:int=1
     plt.colorbar(im, cax=cax, pad=0.04, fraction=0.046)
     plt.tight_layout()
     plt.savefig('{}/fwd_spatial_predictions_{}.png'.format(savefolder, realization)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     return None
 
-def plot_fwd_resoil(true, pred, percentiles=[10,50,90], correction=0.75, bins=25, n_obs=100, 
+def plot_fwd_resoil(true, pred, percentiles=[10,50,90], correction=0.75, bins:int=25, n_obs=100, 
                     cmap='inferno', s=50, m='s', figsize=(12,4), return_data:bool=True):
     xtrue = np.sum(true[:n_obs,...,-1], axis=(1,2,3))/(xy_dim*xy_dim)
     xpred = np.sum(np.nan_to_num(pred[...,-1], nan=correction), axis=(1,2,3))/(xy_dim*xy_dim)
@@ -705,7 +734,7 @@ def plot_fwd_resoil(true, pred, percentiles=[10,50,90], correction=0.75, bins=25
     plt.title('Average Remaining Oil Saturation [%]', weight='bold')
     plt.tight_layout()
     plt.savefig('{}/fwd_resoil_uncertainty.png'.format(savefolder)) if savefig else None
-    plt.show()
+    plt.show() if showfig else None
     if return_data:
         return xtrue, xpred, uq
 
@@ -730,7 +759,7 @@ def decon_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
     _ = UpSampling2D(pool)(_)
     return _
 
-def make_data_ae(w, code_dim=300, z_dim=10, epochs=100, batch=50, opt=Adam(1e-3)):
+def make_data_ae(w, code_dim:int=300, z_dim:int=10, epochs:int=100, batch:int=50, opt=Adam(1e-3)):
     def sample(args, mu=0.0, std=1.0):
         mean, sigma = args
         epsilon = K.random_normal(shape=(K.shape(mean)[0],z_dim), mean=mu, stddev=std)
@@ -766,7 +795,7 @@ def make_data_ae(w, code_dim=300, z_dim=10, epochs=100, batch=50, opt=Adam(1e-3)
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(wparams,traintime))
     return enc, dec, vae, fit
 
-def make_static_ae(y, epochs=300, batch=80, opt=Adam(1e-3), ssim_perc=(2/3)):
+def make_static_ae(y, epochs:int=300, batch:int=80, opt=Adam(1e-3), ssim_perc=(2/3)):
     input_static = Input(shape=y.shape[1:])
     _ = conv_block(input_static, 8)
     _ = conv_block(_, 16)
@@ -799,7 +828,7 @@ def make_static_ae(y, epochs=300, batch=80, opt=Adam(1e-3), ssim_perc=(2/3)):
     print('# Parameters: {:,} | Training time: {:.2f} minutes'.format(yparams,traintime))
     return enc, dec, ae, fit
 
-def make_dynamic_ae(x, code_dim=1000, z_dim=10, epochs=200, batch=80, opt=Adam(1e-3)):
+def make_dynamic_ae(x, code_dim:int=1000, z_dim:int=10, epochs:int=200, batch:int=80, opt=Adam(1e-3)):
     def sample(args, mu=0.0, std=1.0):
         mean, sigma = args
         epsilon = K.random_normal(shape=(K.shape(mean)[0],z_dim), mean=mu, stddev=std)
@@ -857,7 +886,7 @@ def make_full_traintest(xtrain, xtest, wtrain, wtest, ytrain, ytest):
     return xfull, wfull, yfull
 
 def make_inv_regressor(xf, wf, yf, dynamic_enc, data_enc, static_dec, 
-                            opt=Adam(1e-5), loss='mse', epochs=500, batch=80):
+                            opt=Adam(1e-5), loss='mse', epochs:int=500, batch:int=80):
     dynamic_enc.trainable = False
     data_enc.trainable    = False
     static_dec.trainable  = False
@@ -903,8 +932,8 @@ def make_inv_prediction(regmodel, x_tuple, w_tuple, y_tuple):
     print('Train SSIM: {:.2f} | Test SSIM: {:.2f}'.format(100*ssim_train, 100*ssim_test))
     return inv_train, inv_test
 
-def make_fwd_regressor(xf, wf, yf, dynamic_dec, data_dec, static_enc, latent_dim=10,
-                       opt=Adam(1e-3), epochs=100, batch=80):
+def make_fwd_regressor(xf, wf, yf, dynamic_dec, data_dec, static_enc, latent_dim:int=10,
+                       opt=Adam(1e-3), epochs:int=100, batch:int=80):
     dynamic_dec.trainable = False
     data_dec.trainable    = False
     static_enc.trainable  = False
@@ -972,7 +1001,7 @@ def make_fwd_prediction(fwdmodel, x_tuple, w_tuple, y_tuple):
     fwd_W = {'train': fwd_w_train, 'test': fwd_w_test}
     return fwd_X, fwd_W
 
-def save_models(encoders, decoders, autoencoders, regressors, folder='models_2D'):
+def save_models(encoders, decoders, autoencoders, regressors, folder:str='models_2D'):
     # encoders
     static_enc, dynamic_enc, data_enc = encoders
     static_enc.save('{}/static_enc.keras'.format(folder))
@@ -1001,9 +1030,16 @@ def save_models(encoders, decoders, autoencoders, regressors, folder='models_2D'
 ################################################################################################
 
 if __name__ == '__main__':
+    showfig = False
+    sample_realization = 14
+    time0 = time()
+
+    print('--------------------------------------------------------------------------')
+    print('Latent space variational geologic inversion from multi-source dynamic data')
+    print('--------------------------------------------------------------------------')
     print('Module: utils_2d.py | Direct Execution')
     print('-------------------------------------')
-    
+
     ### Initialize script
     K.clear_session()
     check_tensorflow_gpu()
@@ -1013,11 +1049,13 @@ if __name__ == '__main__':
     plot_static(poro, perm, channels)
     plot_data(timestamps, well_opr, well_wpr, well_wcut)
     plot_dynamic(poro, saturation, multiplier=10, cmaps=['viridis','jet']) 
+    # make_dynamic_animation(poro, [pressure,saturation])
     
     ### Process data
     # X_data, y_data, w_data = split_xyw(poro,perm,channels,pressure,saturation,well_opr,well_wpr,well_wcut)
     X_data, y_data, w_data, timestamps = load_xywt()
-    X_train, X_test, y_train, y_test, w_train, w_test, randx, randy = my_train_test_split(X_data, y_data, w_data, nobs=30)
+    xarr, yarr, warr, locs = my_train_test_split(X_data, y_data, w_data, nobs=25, equigrid=False)
+    [X_train,X_test], [y_train,y_test], [w_train,w_test], [randx,randy] = xarr, yarr, warr, locs
     plot_X_img_observation(X_data, randx, randy)
     plot_X_observation(X_train)
     plot_X_line_observation(X_train, timestamps)
@@ -1027,54 +1065,64 @@ if __name__ == '__main__':
     dynamic_enc, dynamic_dec, dynamic_ae, dynamic_fit = make_dynamic_ae(X_train)
     data_enc,    data_dec,    data_ae,    data_fit    = make_data_ae(w_train)
     plot_loss_all(data_fit, static_fit, dynamic_fit)
-    
+
+    y_train_pred, y_test_pred = make_ae_prediction(y_train, y_test, static_ae)
+    plot_static_results([y_train, y_test], [y_train_pred, y_test_pred], train_or_test='train', multiplier=10, channel_select=0)
+    plot_static_results([y_train, y_test], [y_train_pred, y_test_pred], train_or_test='test', multiplier=10, channel_select=0)
+
     w_train_pred, w_test_pred = make_ae_prediction(w_train, w_test, data_ae)
     plot_data_results(timestamps, w_train, w_test, w_train_pred, w_test_pred, channel_select=2, multiplier=10)
-    
-    y_train_pred, y_test_pred = make_ae_prediction(y_train, y_test, static_ae)
-    plot_static_results(y_train, y_train_pred, multiplier=10, channel_select=0, cmaps=['viridis','gray_r'])
-    plot_static_results(y_test, y_test_pred, multiplier=10, channel_select=0, cmaps=['viridis','gray_r'])
-    
+        
     X_train_pred, X_test_pred = make_ae_prediction(X_train, X_test, dynamic_ae)
-    plot_dynamic_results(X_train, X_train_pred, multiplier=10, channel_select=1)
-    plot_dynamic_results(X_test, X_test_pred, multiplier=10, channel_select=1)
-    
-    # Latent INVERSE model
+    plot_dynamic_results([X_train, X_test], [X_train_pred, X_test_pred], train_or_test='train', multiplier=10)
+    plot_dynamic_results([X_train, X_test], [X_train_pred, X_test_pred], train_or_test='test', multiplier=10)
+
+    # Join train-test data for full transfer learning
     X_full, w_full, y_full = make_full_traintest(X_train, X_test, w_train, w_test, y_train, y_test)
+
+    # Latent INVERSE model
     inv, inv_fit = make_inv_regressor(X_full, w_full, y_full, dynamic_enc, data_enc, static_dec)
-    plot_loss(inv_fit, figsize=(4,3))
-    
+    plot_loss(inv_fit, figsize=(4,3), savefig=True, fname='inverse_reg_trainingperformance')
+        
     inv_train, inv_test = make_inv_prediction(inv, [X_train, X_test], [w_train, w_test], [y_train, y_test])
-    plot_inv_latent_dashboard(X_full, w_full, inv_train)
-    plot_inversion_result(y_train, inv_train, multiplier=10, channel_select=0, cmaps=['viridis','gray_r'])
-    plot_inversion_result(y_test, inv_test, multiplier=10, channel_select=0, cmaps=['viridis','gray_r'])
-    
+    plot_inv_latent_dashboard(X_full, w_full, inv_train, realization=sample_realization)
+
+    plot_inversion_result([y_train, y_test], [inv_train, inv_test], train_or_test='train', channel_select=0)
+    plot_inversion_result([y_train, y_test], [inv_train, inv_test], train_or_test='train', channel_select=0)
+
     poro_hat, perm_hat, channels_hat = make_inv_backnorm([inv_train, inv_test], [poro, perm, channels])
-    plot_static(poro_hat, perm_hat, channels_hat, multiplier=10)
-    
+    plot_static(poro_hat, perm_hat, channels_hat, multiplier=10, inv_flag=True)
+
     # Latent FORWARD model
     fwd, fwd_fit = make_fwd_regressor(X_full, w_full, y_full, dynamic_dec, data_dec, static_enc)
-    plot_loss(fwd_fit, figsize=(4,3))
-    
+    plot_loss(fwd_fit, figsize=(4,3), savefig=True, fname='forward_reg_trainingperformance')
+        
     fwd_X, fwd_w = make_fwd_prediction(fwd, [X_train, X_test], [w_train, w_test], [y_train, y_test])
-    plot_fwd_results_data(w_train, fwd_w['train'])
-    plot_fwd_results_data(w_test, fwd_w['test'])
-    plot_fwd_results_dynamic(X_train, fwd_X['train'])
-    plot_fwd_results_dynamic(X_test, fwd_X['test'])
-    plot_fwd_results_dynamic_line(X_train, fwd_X['train'], nw=3)
-    plot_fwd_results_dynamic_line(X_test, fwd_X['test'], nw=3)
     plot_fwd_latent_dashboard(w_full, y_full, fwd_X['train'], fwd_w['train'])
+
+    plot_fwd_results_data([w_train,w_test], fwd_w, train_or_test='train')
+    plot_fwd_results_data([w_train,w_test], fwd_w, train_or_test='test')
+
+    plot_fwd_results_dynamic([X_train,X_test], fwd_X, train_or_test='train')
+    plot_fwd_results_dynamic([X_train,X_test], fwd_X, train_or_test='test')
+
+    plot_fwd_results_dynamic_line([X_train,X_test], fwd_X, train_or_test='train')
+    plot_fwd_results_dynamic_line([X_train,X_test], fwd_X, train_or_test='test')
     
     spatial_fwdX = fwd_latent_spatial_interpolation(fwd_X, locs=[randx,randy], train_or_test='train', n_obs=100)
-    plot_fwd_latent_map(spatial_fwdX, y_train, X_data, locs=[randx, randy], realization=14)
-    xcum_true, xcum_pred, uq = plot_fwd_resoil(X_data, spatial_fwdX, correction=0.75)
-    
+    plot_fwd_latent_map(spatial_fwdX, y_data, X_data, locs=[randx, randy], realization=sample_realization)
+    xcum_true, xcum_pred, uq = plot_fwd_resoil(X_data, spatial_fwdX, correction=0.75, cmap='rainbow')
+
     # Save models
+    print('-------------------------------------')
     print('Saving models to disk...')
-    save_models([static_enc,dynamic_enc,data_enc],[static_dec,dynamic_dec,data_dec],[static_ae,dynamic_ae,data_ae],[inv, fwd])
+    save_models([static_enc, dynamic_enc, data_enc],
+                [static_dec, dynamic_dec, data_dec],
+                [static_ae,  dynamic_ae,  data_ae],
+                [inv, fwd])
 
     # Exit
-    print('All done!')
+    print('All done! | Total time: {:.2f} minutes'.format((time()-time0)/60))
     print('-------------------------------------')
 
 ################################################################################################

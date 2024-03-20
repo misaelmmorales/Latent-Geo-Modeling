@@ -1,0 +1,97 @@
+2024-03-20 03:42:36.717496: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:9261] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2024-03-20 03:42:36.717540: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:607] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2024-03-20 03:42:36.718577: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1515] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2024-03-20 03:42:36.724584: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2024-03-20 03:42:37.296476: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+/home/misaelmorales/miniconda3/envs/flow/lib/python3.9/site-packages/tensorflow_addons/utils/tfa_eol_msg.py:23: UserWarning: 
+
+TensorFlow Addons (TFA) has ended development and introduction of new features.
+TFA has entered a minimal maintenance and release mode until a planned end of life in May 2024.
+Please modify downstream libraries to take dependencies from other repositories in our TensorFlow community (e.g. Keras, Keras-CV, and Keras-NLP). 
+
+For more information see: https://github.com/tensorflow/addons/issues/2807 
+
+  warnings.warn(
+2024-03-20 03:42:38.609069: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.648236: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.648304: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.651053: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.651149: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.651182: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.976703: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.976843: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.976854: I tensorflow/core/common_runtime/gpu/gpu_device.cc:2022] Could not identify NUMA node of platform GPU id 0, defaulting to 0.  Your kernel may not have been built with NUMA support.
+2024-03-20 03:42:38.976902: I external/local_xla/xla/stream_executor/cuda/cuda_executor.cc:887] could not open file to read NUMA node: /sys/bus/pci/devices/0000:01:00.0/numa_node
+Your kernel may have been built without NUMA support.
+2024-03-20 03:42:38.976925: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1929] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 7551 MB memory:  -> device: 0, name: NVIDIA GeForce RTX 3080, pci bus id: 0000:01:00.0, compute capability: 8.6
+2024-03-20 03:44:43.140978: I external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:454] Loaded cuDNN version 8904
+2024-03-20 03:44:43.240088: I external/local_tsl/tsl/platform/default/subprocess.cc:304] Start cannot spawn child process: Permission denied
+2024-03-20 03:44:43.388213: I external/local_tsl/tsl/platform/default/subprocess.cc:304] Start cannot spawn child process: Permission denied
+2024-03-20 03:44:46.066847: I external/local_xla/xla/service/service.cc:168] XLA service 0x7f8f7810f6e0 initialized for platform CUDA (this does not guarantee that XLA will be used). Devices:
+2024-03-20 03:44:46.066890: I external/local_xla/xla/service/service.cc:176]   StreamExecutor device (0): NVIDIA GeForce RTX 3080, Compute Capability 8.6
+2024-03-20 03:44:46.071665: I tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.cc:269] disabling MLIR crash reproducer, set env var `MLIR_CRASH_REPRODUCER_DIRECTORY` to enable.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1710924286.145040  754240 device_compiler.h:186] Compiled cluster using XLA!  This line is logged at most once for the lifetime of the process.
+--------------------------------------------------------------------------
+Latent space variational geologic inversion from multi-source dynamic data
+--------------------------------------------------------------------------
+Module: utils_2d.py | Direct Execution
+-------------------------------------
+Tensorflow built with CUDA? True
+Tensorflow version: 2.15.0
+# GPU available: 1
+CUDA: 12.2 | cuDNN: 8
+[PhysicalDevice(name='/physical_device:CPU:0', device_type='CPU'), PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
+Perm: (1000, 128, 128) | Poro: (1000, 128, 128) | Channels: (1000, 128, 128) | Pressure: (1000, 45, 128, 128) | Saturation: (1000, 45, 128, 128)
+OPR: (1000, 45, 3) | WPR: (1000, 45, 3) | WCUT: (1000, 45, 3) | Timestamps: (45,)
+X shape: (1000, 45, 128, 128, 2) | w shape: (1000, 45, 3, 3) 
+y shape: (1000, 128, 128, 3) | t shape: (45,)
+X_train shape: (700, 45, 25, 2)   | X_test shape: (300, 45, 25, 2)
+w_train shape: (700, 45, 3, 3)    | w_test shape: (300, 45, 3, 3)
+y_train shape: (700, 128, 128, 3) | y_test shape: (300, 128, 128, 3)
+# Parameters: 40,238 | Training time: 3.10 minutes
+# Parameters: 4,709,670 | Training time: 0.40 minutes
+# Parameters: 308,025 | Training time: 0.32 minutes
+ 1/22 [>.............................] - ETA: 12s 2/22 [=>............................] - ETA: 2s  3/22 [===>..........................] - ETA: 2s 4/22 [====>.........................] - ETA: 1s 8/22 [=========>....................] - ETA: 0s12/22 [===============>..............] - ETA: 0s16/22 [====================>.........] - ETA: 0s20/22 [==========================>...] - ETA: 0s22/22 [==============================] - 1s 25ms/step
+ 1/10 [==>...........................] - ETA: 0s 5/10 [==============>...............] - ETA: 0s 9/10 [==========================>...] - ETA: 0s10/10 [==============================] - 0s 13ms/step
+Train MSE: 2.75e-02 | Test MSE: 2.75e-02
+Train SSIM: 83.94 | Test SSIM: 83.54
+ 1/22 [>.............................] - ETA: 2s 4/22 [====>.........................] - ETA: 0s22/22 [==============================] - 0s 5ms/step
+ 1/10 [==>...........................] - ETA: 0s10/10 [==============================] - 0s 3ms/step
+Train MSE: 4.96e-04 | Test MSE: 4.96e-04
+Image data must have shape at least (7x7) for ssim calculation
+ 1/22 [>.............................] - ETA: 2s18/22 [=======================>......] - ETA: 0s22/22 [==============================] - 0s 3ms/step
+ 1/10 [==>...........................] - ETA: 0s10/10 [==============================] - 0s 4ms/step
+Train MSE: 2.63e-03 | Test MSE: 2.63e-03
+Train SSIM: 94.66 | Test SSIM: 92.42
+X_full: (1000, 45, 25, 2) | w_full: (1000, 45, 3, 3) | y_full: (1000, 128, 128, 3)
+# Parameters: 62,509,895 | Training time: 4.45 minutes
+ 1/22 [>.............................] - ETA: 12s 5/22 [=====>........................] - ETA: 0s  9/22 [===========>..................] - ETA: 0s13/22 [================>.............] - ETA: 0s17/22 [======================>.......] - ETA: 0s21/22 [===========================>..] - ETA: 0s22/22 [==============================] - 1s 15ms/step
+ 1/10 [==>...........................] - ETA: 0s 5/10 [==============>...............] - ETA: 0s 9/10 [==========================>...] - ETA: 0s10/10 [==============================] - 0s 16ms/step
+Train MSE: 2.51e-02 | Test MSE: 9.98e-02
+Train SSIM: 80.05 | Test SSIM: 37.29
+# Parameters: 20,438,702 | Training time: 0.68 minutes
+ 1/22 [>.............................] - ETA: 7s 6/22 [=======>......................] - ETA: 0s11/22 [==============>...............] - ETA: 0s16/22 [====================>.........] - ETA: 0s21/22 [===========================>..] - ETA: 0s22/22 [==============================] - 1s 11ms/step
+ 1/10 [==>...........................] - ETA: 0s 6/10 [=================>............] - ETA: 0s10/10 [==============================] - 0s 11ms/step
+/mnt/e/Latent-Geo-Inversion/utils_2d.py:470: RuntimeWarning: More than 20 figures have been opened. Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. (To control this warning, see the rcParam `figure.max_open_warning`). Consider using `matplotlib.pyplot.close()`.
+  plt.figure(figsize=figsize)
+X - MSE: Train 2.27e-03 | Test: 8.78e-03
+w - MSE: Train 7.96e-04 | Test: 1.42e-02
+R2: 0.3038 | MSE: 0.4055
+P  - True: [32.759 33.731 34.748] | Predicted: [32.883 33.887 34.721]
+UQ - True: 1.9889 | Predicted: 1.8378
+-------------------------------------
+Saving models to disk...
+All models saved to models_2D
+All done!
+Total time: 12.41 minutes
+-------------------------------------
