@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.gridspec import GridSpec
 
-from scipy.io import loadmat
 from time import time
+from scipy.io import loadmat
+from scipy.interpolate import griddata
 
 from skimage.metrics import mean_squared_error as img_mse
 from skimage.metrics import structural_similarity
@@ -133,6 +134,16 @@ def make_inv_backnorm(inv_tuple, true_tuple):
     chan_hat = my_normalize(inv_all[...,2], channels, mode='inverse')
     return poro_hat, perm_hat, chan_hat
 
+def fwd_latent_spatial_interpolation(fwdX, locs, n_obs:int=100, train_or_test:str='train', method:str='cubic'):
+    randx, randy = locs
+    X, Y, = np.meshgrid(np.arange(128), np.arange(128))
+    s = np.zeros((n_obs,45,128,128,2))
+    for i in range(n_obs):
+        for t in range(45):
+            for c in range(2):
+                s[i,t,:,:,c] = griddata((randy,randx), fwdX[train_or_test][i,t,:,c], (X,Y), method=method)
+    return s
+
 ################################################################################################
 ########################################## PLOT UTILS ##########################################
 ################################################################################################
@@ -147,10 +158,9 @@ def plot_loss(fit, title='', figsize=None):
     plt.legend(facecolor='lightgrey', edgecolor='k'); plt.grid(True, which='both')
     plt.ylabel('Epochs'); plt.ylabel('Loss')
     plt.xticks(iterations[::epochs//10])
-    plt.tight_layout(); plt.show()
     return None
 
-def plot_loss_all(loss1, loss2, loss3, title1='Data', title2='Static', title3='Dynamic', figsize=(15,3)):
+def plot_loss_all(loss1, loss2, loss3, title1='Data', title2='Static', title3='Dynamic', figsize=(10,4)):
     plt.figure(figsize=figsize, facecolor='white')
     plt.subplot(131); plot_loss(loss1, title=title1)
     plt.subplot(132); plot_loss(loss2, title=title2)
@@ -505,6 +515,59 @@ def plot_fwd_latent_dashboard(wtrue, ytrue, fwdX, fwdw,
     plt.tight_layout(); plt.show()
     return None
 
+def plot_fwd_latent_map(s, ytrue, xtrue, locs, realization:int=1, channel:int=1, 
+                        vmin=0.2, vmax=0.8, figsize=(12,10)):
+    randx, randy = locs
+    injx,  injy  = np.array([0,   0,   0]),   np.array([0, 63, 127])
+    prodx, prody = np.array([127, 127, 127]), np.array([0, 63, 127])
+    ylabels = ['Porosity','Log Permeability','Facies']
+    fig = plt.figure(figsize=figsize)
+    gs  = GridSpec(4,5,width_ratios=[1,1,1,1,0.125])
+    k = 0
+    for i in range(1,4):
+        for j in range(4):
+            ax = fig.add_subplot(gs[i,j])
+            ax.scatter(randy, randx, s=10, c='k',  marker='o')
+            ax.scatter(injx,  injy,  s=150, c='b', marker='v')
+            ax.scatter(prodx, prody, s=150, c='r', marker='^')
+            im = ax.imshow(s[realization,k,:,:,channel], cmap='jet', vmin=vmin, vmax=vmax)
+            ax.imshow(ytrue[realization,...,0], cmap='viridis', alpha=0.3)
+            ax.set(xticks=[], yticks=[])
+            ax.set_title('t={}'.format(k+1), weight='bold')
+            k += 4
+    for i in range(3):
+        ax = fig.add_subplot(gs[0,i])
+        cmap = 'binary' if i==2 else 'jet'
+        yim = ax.imshow(ytrue[realization,...,i], cmap=cmap)
+        ax.set_title('True {}'.format(ylabels[i]), weight='bold')
+        plt.colorbar(yim, ax=ax, pad=0.04, fraction=0.046)
+        ax.set(xticks=[], yticks=[])
+    xax = fig.add_subplot(gs[0, -2])
+    xim = xax.imshow(xtrue[realization,-1,...,channel], cmap='jet', vmin=vmin, vmax=vmax)
+    xax.set_title('True Saturation (t=45)', weight='bold')
+    plt.colorbar(xim, ax=xax, pad=0.04, fraction=0.046)
+    xax.set(xticks=[], yticks=[])
+    cax = fig.add_subplot(gs[1:,-1])
+    cb = plt.colorbar(im, cax=cax, orientation='vertical', pad=0.04, fraction=0.046)
+    cb.set_label('Oil Saturation', weight='bold', rotation=270, labelpad=15, fontsize=14)
+    fig.suptitle('Realization {}'.format(realization), weight='bold', fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+def plot_fwd_resoil(true, pred, correction=0.75, bins=25, n_obs=100, figsize=(7.5,4)):
+    xtrue = np.sum(true[:n_obs,...,-1], axis=(1,2,3))/(xy_dim*xy_dim)
+    xpred = np.sum(np.nan_to_num(pred[...,-1], nan=correction), axis=(1,2,3))/(xy_dim*xy_dim)
+    plt.figure(figsize=figsize)
+    plt.hist(xtrue, bins=bins, label='True', density=True, edgecolor='k')
+    plt.hist(xpred, bins=bins, label='Predicted', density=True, edgecolor='k', alpha=0.6)
+    plt.xlabel('Average Remaining Oil Saturation [%]', weight='bold')
+    plt.ylabel('Density', weight='bold')
+    plt.grid(True, which='both', alpha=0.5)
+    plt.legend(facecolor='lightgrey', edgecolor='k')
+    plt.tight_layout()
+    plt.show()
+    return None
+
 ################################################################################################
 ######################################### MODEL UTILS ##########################################
 ################################################################################################
@@ -732,8 +795,8 @@ def make_fwd_prediction(fwdmodel, x_tuple, w_tuple, y_tuple):
     xtrain, xtest = x_tuple
     wtrain, wtest = w_tuple
     ytrain, ytest = y_tuple
-    fwd_train = fwdmodel.predict(ytrain)
-    fwd_test = fwdmodel.predict(ytest)
+    fwd_train = fwdmodel.predict([xtrain,wtrain,ytrain])
+    fwd_test = fwdmodel.predict([xtest,wtest,ytest])
     fwd_x_train, fwd_w_train = fwd_train
     fwd_x_test,  fwd_w_test  = fwd_test
     mse_x_train = img_mse(xtrain, fwd_x_train)
