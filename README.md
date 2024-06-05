@@ -1,5 +1,6 @@
-# Latent-Geo-Inversion
-latent space variational inversion for geomodels from dynamic data with decoupled autoencoders
+# Latent-Geo-Modeling
+- Coupled variational autoencoders for geologic inversion from multi-source dynamic data.
+- A deep learning method for closed-loop modeling of subsurface flow using coupled variational autoencoders.
 
 <p align="center">
   <img src="https://github.com/misaelmmorales/Latent-Geo-Inversion/blob/main/copy_of_figures/figures_old/dynamic_animation.gif" width="1000"/>
@@ -20,4 +21,3 @@ latent space variational inversion for geomodels from dynamic data with decouple
 <p align="center">
   <img src="https://github.com/misaelmmorales/Latent-Geo-Inversion/blob/main/copy_of_figures/figures_old/geo-inv-figs.jpg" width="500" />
 </p>
-
