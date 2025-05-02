@@ -39,7 +39,5 @@ function [states] = run_simulation(i, G, fluid, rock_all)
     save(sprintf('results/states/states_%d.mat', i), 'states');
     save(sprintf('results/wellsol/wellsol_%d.mat', i), 'ws');
     
-    sprintf('Finished %d', i);
-
 end
 
