@@ -19,9 +19,8 @@ from skimage.metrics import structural_similarity
 
 import keras.backend as K
 from keras import Model, Input
-from tensorflow_addons.layers import InstanceNormalization, GELU
-from keras.layers import BatchNormalization, LayerNormalization, PReLU
-from keras.layers import Flatten, Reshape, Concatenate, Lambda
+from keras.layers import BatchNormalization, LayerNormalization, GroupNormalization, PReLU
+from keras.layers import Flatten, Reshape, Concatenate, Lambda, Activation
 from keras.layers import SeparableConv2D, AveragePooling2D, UpSampling2D, Dense
 from keras.optimizers import Adam
 from keras.losses import mean_squared_error as loss_mse
@@ -239,7 +238,7 @@ def plot_data(timestamps, opr, wpr, wcut, multiplier:int=1, ncols:int=10, figsiz
         axs[2,i].plot(timestamps, wcut[i*multiplier])
         axs[0,i].set_title('realization {}'.format((i)*multiplier))
         axs[2,i].set_xlabel('time [years]')
-        axs[2,i].set_ylim(0,1)
+        axs[2,i].set_ylim(0.20,1)
         for j in range(2):
             axs[j,i].set(xticks=[])
         for j in range(3):
@@ -751,18 +750,18 @@ def plot_fwd_resoil(true, pred, percentiles=[10,50,90], correction=0.75, bins:in
 def conv_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(inp)
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(_)
-    _ = InstanceNormalization()(_)
+    _ = GroupNormalization(groups=-1)(_)
     _ = BatchNormalization()(_)
-    _ = GELU()(_)
+    _ = Activation('gelu')(_)
     _ = AveragePooling2D(pool)(_)
     return _
 
 def decon_block(inp, filt, kern=(3,3), pool=(2,2), pad='same'):
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(inp)
     _ = SeparableConv2D(filters=filt, kernel_size=kern, padding=pad)(_)
-    _ = InstanceNormalization()(_)
+    _ = GroupNormalization(groups=-1)(_)
     _ = BatchNormalization()(_)
-    _ = GELU()(_)
+    _ = Activation('gelu')(_)
     _ = UpSampling2D(pool)(_)
     return _
 
@@ -772,7 +771,7 @@ def make_data_ae(w, code_dim:int=300, z_dim:int=10, epochs:int=100, batch:int=50
         epsilon = K.random_normal(shape=(K.shape(mean)[0],z_dim), mean=mu, stddev=std)
         return mean + K.exp(sigma)*epsilon
     inputs = Input(shape=(w.shape[1:]))
-    shape_b4 = K.int_shape(inputs)[1:]
+    shape_b4 = tf.keras.backend.int_shape(inputs)[1:]
     _ = Flatten()(inputs)
     _ = Dense(code_dim, activation=PReLU())(_)
     code = _
@@ -809,9 +808,9 @@ def make_static_ae(y, epochs:int=300, batch:int=80, opt=Adam(1e-3), ssim_perc=(2
     _ = conv_block(_, 32)
     _ = conv_block(_, 64)
     code = SeparableConv2D(128, (3,3), padding='same', activation='relu')(_)
-    shape_b4 = K.int_shape(code)[1:]
+    shape_b4 = tf.keras.backend.int_shape(code)[1:]
     latent = Flatten()(code)
-    shape_flat = K.int_shape(latent)[1]
+    shape_flat = tf.keras.backend.int_shape(latent)[1]
     z_inp = Input(shape=(shape_flat,))
     _ = Reshape(shape_b4)(z_inp)
     _ = decon_block(_, 64)
@@ -841,7 +840,7 @@ def make_dynamic_ae(x, code_dim:int=1000, z_dim:int=10, epochs:int=200, batch:in
         epsilon = K.random_normal(shape=(K.shape(mean)[0],z_dim), mean=mu, stddev=std)
         return mean + K.exp(sigma)*epsilon
     inputs = Input(shape=x.shape[1:])
-    shape_b4 = K.int_shape(inputs)[1:]
+    shape_b4 = tf.keras.backend.int_shape(inputs)[1:]
     _ = Flatten()(inputs)
     _ = Dense(code_dim, activation=PReLU())(_)
     code = _
@@ -947,7 +946,7 @@ def make_fwd_regressor(xf, wf, yf, dynamic_dec, data_dec, static_enc, latent_dim
     def dense_block(input, neurons):
         _ = Dense(neurons)(input)
         _ = BatchNormalization()(_)
-        _ = GELU()(_)
+        _ = Activation('gelu')(_)
         return _
     def sample(args, mu=0.0, std=1.0):
         mean, sigma = args

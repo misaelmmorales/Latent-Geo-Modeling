@@ -1,10 +1,11 @@
 paper/*
 
 simulations_2D/*
-models_2D/*
-
 simulations_3D/*
+
+models_2D/*
 models_3D/*
+
 simulations_new/por_perm_facies_1000x128x128.mat
 simulations_new/por_perm_facies_1000x128x128.npz
-simulations_new/results/*
+simulations_new/data/*
