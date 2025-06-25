@@ -1,5 +1,7 @@
 # Latent Geo-Modeling
 
+Misael M. Morales, Carlos Torres-Verdin, and Michael Pyrcz. (submitted). Decoupled variational autoencoders for geologic inversion and uncertainty quantification from multi-source dynamic data. <em>Mathematical Geosciences</em>.
+
 <p align="center">
   <img src="https://github.com/misaelmmorales/Latent-Geo-Inversion/blob/main/copy_of_figures/figures_old/dynamic_animation.gif" width="1000"/>
 </p>
