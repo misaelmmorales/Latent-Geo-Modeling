@@ -15,7 +15,7 @@ Dx=800; Dy=800; Dz=8;
 G  = cartGrid([nx ny nz], [Dx Dy Dz]*meter);
 G  = computeGeometry(G);
 
-dataset = load('por_perm_facies_1000x128x128.mat');
+dataset = load('data/por_perm_facies_1000x128x128.mat');
 poro_all = reshape(dataset.poro_norm, [nr,nx*ny]);
 perm_all = reshape(dataset.perm_norm, [nr,nx*ny]);
 channel = reshape(dataset.facies_norm, [nr,nx*ny]);
@@ -59,8 +59,8 @@ schedule = simpleSchedule(rampupTimesteps(T, dT, 0), 'W', W);
 [ws, states] = simulateScheduleAD(state0, model, schedule);
 
 %% Save results
-save(sprintf('results/states/states_%d.mat', realization), 'states');
-save(sprintf('results/wellsol/wellsol_%d.mat', realization), 'ws');
+% save(sprintf('results/states/states_%d.mat', realization), 'states');
+% save(sprintf('results/wellsol/wellsol_%d.mat', realization), 'ws');
 
 %% Plot
 figure(1); clf
